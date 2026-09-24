@@ -1,4 +1,4 @@
-using System.Text.Json;
+using NugoloMag.Analyst.Application.Llm;
 using NugoloMag.Analyst.Domain.Assistant;
 
 namespace NugoloMag.Analyst.Application.Assistant;
@@ -21,18 +21,6 @@ public interface ISavedQueryStore
     Task DeleteAsync(long id, CancellationToken ct = default);
 }
 
-/// <summary>Definizione di uno strumento per l'LLM: nome, descrizione e JSON Schema dell'input (testo, senza reflection).</summary>
-public sealed record ToolSpec(string Name, string Description, string InputSchemaJson);
-
-public sealed record ToolOutcome(string Content, bool IsError);
-
-/// <summary>Gli strumenti a disposizione dell'assistente, indipendenti dal fornitore dell'LLM.</summary>
-public interface IDataAgentToolbox
-{
-    IReadOnlyList<ToolSpec> Specs { get; }
-    Task<ToolOutcome> ExecuteAsync(string name, JsonElement input, CancellationToken ct = default);
-}
-
 public sealed record AgentContext(string SourceName, string Database, string? DiscoveryBrief, DateOnly Today);
 
 /// <summary>
@@ -43,7 +31,7 @@ public interface IDataAgent
 {
     bool IsAvailable { get; }
     Task<IReadOnlyList<ConversationEntry>> ReplyAsync(
-        AgentContext context, IReadOnlyList<ConversationEntry> history, string message, IDataAgentToolbox tools, CancellationToken ct = default);
+        AgentContext context, IReadOnlyList<ConversationEntry> history, string message, IToolbox tools, CancellationToken ct = default);
 }
 
 public sealed class UnavailableDataAgent : IDataAgent
@@ -51,11 +39,11 @@ public sealed class UnavailableDataAgent : IDataAgent
     public bool IsAvailable => false;
 
     public Task<IReadOnlyList<ConversationEntry>> ReplyAsync(
-        AgentContext context, IReadOnlyList<ConversationEntry> history, string message, IDataAgentToolbox tools, CancellationToken ct = default) =>
+        AgentContext context, IReadOnlyList<ConversationEntry> history, string message, IToolbox tools, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ConversationEntry>>(
         [
             new ConversationEntry(0, EntryKind.Assistant,
-                "L'assistente conversazionale richiede Claude: impostare la variabile d'ambiente ANTHROPIC_API_KEY e riavviare l'applicazione.",
+                "L'assistente conversazionale richiede un modello linguistico: configurare la sezione Llm di appsettings (Ollama, Anthropic o compatibile OpenAI) e riavviare l'applicazione.",
                 null, null, null, true, DateTimeOffset.UtcNow)
         ]);
 }

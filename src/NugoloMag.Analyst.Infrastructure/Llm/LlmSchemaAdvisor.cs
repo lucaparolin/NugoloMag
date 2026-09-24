@@ -1,16 +1,15 @@
-using Anthropic;
-using Anthropic.Models.Beta.Messages;
+using NugoloMag.Analyst.Application.Llm;
 using NugoloMag.Analyst.Application.Discovery;
 using NugoloMag.Analyst.Domain.Discovery;
 using NugoloMag.Analyst.Infrastructure.Serialization;
 
-namespace NugoloMag.Analyst.Infrastructure.Claude;
+namespace NugoloMag.Analyst.Infrastructure.Llm;
 
 /// <summary>
-/// Secondo parere di Claude sulla proposta dell'agente: legge candidati, mapping, causali e prova sui dati
+/// Secondo parere di un LLM sulla proposta dell'agente: legge candidati, mapping, causali e prova sui dati
 /// e segnala scelte dubbie. Non cambia nulla da solo: l'utente decide.
 /// </summary>
-public sealed class ClaudeSchemaAdvisor(AnthropicClient client, string model = ClaudeInsightNarrator.DefaultModel) : ISchemaAdvisor
+public sealed class LlmSchemaAdvisor(IChatModel model) : ISchemaAdvisor
 {
     private const string SystemPrompt = """
         Sei un consulente esperto di gestionali italiani (ERP) e di database SQL Server.
@@ -29,18 +28,9 @@ public sealed class ClaudeSchemaAdvisor(AnthropicClient client, string model = C
     {
         var json = NugoloJson.Serialize(report with { Validation = report.Validation is { } v ? v with { Preview = v.Preview.Take(5).ToList() } : null });
 
-        var response = await client.Beta.Messages.Create(new MessageCreateParams
-        {
-            Model = model,
-            MaxTokens = 16000,
-            System = SystemPrompt,
-            Betas = ["server-side-fallback-2026-07-01"],
-            Fallbacks = new Default(),
-            Messages = [new() { Role = Role.User, Content = $"<analisi>\n{json}\n</analisi>" }]
-        }, ct);
-
-        if (response.StopReason == "refusal") return null;
-        var text = string.Concat(response.Content.Select(b => b.Value).OfType<BetaTextBlock>().Select(t => t.Text)).Trim();
+        var response = await model.CompleteAsync(new ChatRequest(SystemPrompt, [ChatMessage.User($"<analisi>\n{json}\n</analisi>")], [], MaxTokens: 2000), ct);
+        if (response.Stop == ChatStop.Refusal) return null;
+        var text = response.Text.Trim();
         return text.Length == 0 ? null : text;
     }
 }

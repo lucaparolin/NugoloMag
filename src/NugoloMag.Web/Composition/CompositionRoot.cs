@@ -1,4 +1,3 @@
-using Anthropic;
 using Microsoft.AspNetCore.Mvc;
 using NugoloMag.Analyst.Application;
 using NugoloMag.Analyst.Application.Abstractions;
@@ -8,7 +7,8 @@ using NugoloMag.Analyst.Application.Discovery;
 using NugoloMag.Analyst.Application.Monitoring;
 using NugoloMag.Analyst.Application.Narration;
 using NugoloMag.Analyst.Application.RootCause;
-using NugoloMag.Analyst.Infrastructure.Claude;
+using NugoloMag.Analyst.Application.Llm;
+using NugoloMag.Analyst.Infrastructure.Llm;
 using NugoloMag.Analyst.Infrastructure.SqlServer;
 using NugoloMag.Analyst.Infrastructure.Store;
 using NugoloMag.Web.Controllers;
@@ -30,8 +30,10 @@ public static class CompositionRoot
             .ToDictionary(s => s.Key, s => s.Value!, StringComparer.OrdinalIgnoreCase);
         var zone = TimeZoneInfo.FindSystemTimeZoneById(configuration["Monitoring:TimeZone"] ?? "Europe/Rome");
         var poll = TimeSpan.FromSeconds(int.TryParse(configuration["Monitoring:PollSeconds"], out var p) ? p : 60);
-        var claudeModel = configuration["Claude:Model"] ?? ClaudeInsightNarrator.DefaultModel;
-        var claudeEnabled = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
+        var llmOptions = LlmOptionsReader.Read(key => configuration[key]);
+        var llmHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(llmOptions.TimeoutSeconds) };
+        var chatModel = ChatModelFactory.Create(llmOptions, llmHttp);
+        var llmEnabled = chatModel is not null;
 
         // Infrastruttura
         services.AddSingleton(TimeProvider.System);
@@ -45,12 +47,12 @@ public static class CompositionRoot
         services.AddSingleton<IConversationStore>(sp => new SqlConversationStore(sp.GetRequiredService<SqlConnectionFactory>()));
         services.AddSingleton<ISavedQueryStore>(sp => new SqlSavedQueryStore(sp.GetRequiredService<SqlConnectionFactory>()));
 
-        if (claudeEnabled)
+        if (chatModel is not null)
         {
-            services.AddSingleton(new AnthropicClient());
-            services.AddSingleton<IInsightNarrator>(sp => new ClaudeInsightNarrator(sp.GetRequiredService<AnthropicClient>(), new TemplateInsightNarrator(), claudeModel));
-            services.AddSingleton<ISchemaAdvisor>(sp => new ClaudeSchemaAdvisor(sp.GetRequiredService<AnthropicClient>(), claudeModel));
-            services.AddSingleton<IDataAgent>(sp => new ClaudeDataAgent(sp.GetRequiredService<AnthropicClient>(), claudeModel));
+            services.AddSingleton(chatModel);
+            services.AddSingleton<IInsightNarrator>(new LlmInsightNarrator(chatModel, new TemplateInsightNarrator()));
+            services.AddSingleton<ISchemaAdvisor>(new LlmSchemaAdvisor(chatModel));
+            services.AddSingleton<IDataAgent>(new LlmDataAgent(chatModel));
         }
         else
         {
@@ -101,7 +103,7 @@ public static class CompositionRoot
 
         // Controller MVC: registrati prima di AddControllersAsServices, che quindi non li ricrea via reflection.
         services.AddTransient(sp => new HomeController(
-            sp.GetRequiredService<IMonitorStore>(), sp.GetRequiredService<IDiscoveryStore>(), sp.GetRequiredService<ISourceRegistry>(), claudeEnabled));
+            sp.GetRequiredService<IMonitorStore>(), sp.GetRequiredService<IDiscoveryStore>(), sp.GetRequiredService<ISourceRegistry>(), llmEnabled));
         services.AddTransient(sp => new DiscoveryController(
             sp.GetRequiredService<ISourceRegistry>(), sp.GetRequiredService<IDiscoveryStore>(),
             sp.GetRequiredService<DatabaseDiscoveryAgent>(), sp.GetRequiredService<MonitoringService>()));

@@ -28,6 +28,19 @@ public sealed record MovementSource(
 /// <summary>Tabella di saldi storici giornalieri (facoltativa): se c'è, la giacenza viene da qui.</summary>
 public sealed record SnapshotSource(TableName Table, string DateColumn, string? WarehouseColumn, string ItemColumn, string OnHandColumn);
 
+/// <summary>Tabella delle missioni di magazzino (facoltativa): abilita l'agente Produttività.</summary>
+public sealed record TaskSource(
+    TableName Table,
+    string? WarehouseColumn,
+    string StartColumn,
+    string EndColumn,
+    string? ZoneColumn,
+    string? ActivityColumn,
+    string? OrderColumn,
+    string? ItemColumn,
+    string? LocationColumn,
+    string? QuantityColumn);
+
 public sealed record ItemMasterSource(TableName Table, string KeyColumn, string? CategoryColumn, string? CostColumn);
 
 /// <summary>
@@ -38,7 +51,8 @@ public sealed record SourceMapping(
     MovementSource Movements,
     SnapshotSource? Snapshot,
     ItemMasterSource? Items,
-    string DefaultWarehouse = "MAG")
+    string DefaultWarehouse = "MAG",
+    TaskSource? Tasks = null)
 {
     /// <summary>Verifica che ogni tabella e colonna esista davvero e abbia un tipo sensato. È la barriera anti-injection.</summary>
     public IReadOnlyList<string> Validate(DatabaseCatalog catalog)
@@ -84,6 +98,15 @@ public sealed record SourceMapping(
             RequireColumn(items, Items.KeyColumn, errors, c => c.IsKeyLike, "deve essere un codice");
             OptionalColumn(items, Items.CategoryColumn, errors, _ => true, "");
             OptionalColumn(items, Items.CostColumn, errors, c => c.IsNumeric, "deve essere numerica");
+        }
+
+        if (Tasks is not null && Require(catalog, Tasks.Table, errors) is { } tasks)
+        {
+            RequireColumn(tasks, Tasks.StartColumn, errors, c => c.IsDate, "deve essere una data/ora");
+            RequireColumn(tasks, Tasks.EndColumn, errors, c => c.IsDate, "deve essere una data/ora");
+            foreach (var column in new[] { Tasks.WarehouseColumn, Tasks.ZoneColumn, Tasks.ActivityColumn, Tasks.OrderColumn, Tasks.ItemColumn, Tasks.LocationColumn })
+                OptionalColumn(tasks, column, errors, c => c.IsKeyLike, "deve essere un codice");
+            OptionalColumn(tasks, Tasks.QuantityColumn, errors, c => c.IsNumeric, "deve essere numerica");
         }
 
         if (string.IsNullOrWhiteSpace(DefaultWarehouse) || DefaultWarehouse.Length > 20)

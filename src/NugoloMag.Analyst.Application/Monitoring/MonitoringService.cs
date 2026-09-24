@@ -17,7 +17,8 @@ public sealed class MonitoringService(
     ISourceRegistry sources,
     AnalystService analyst,
     TimeProvider clock,
-    TimeZoneInfo zone)
+    TimeZoneInfo zone,
+    Agentic.WarehouseOrchestrator? orchestrator = null)
 {
     public async Task<long> ActivateAsync(ActivationRequest request, CancellationToken ct = default)
     {
@@ -39,6 +40,7 @@ public sealed class MonitoringService(
             DiscoveryId = discovery.Id,
             Mapping = discovery.Mapping,
             SourceQuery = discovery.SourceQuery,
+            TaskQuery = discovery.TaskQuery,
             RunAt = request.RunAt,
             BaselineDays = request.BaselineDays,
             RecentDays = request.RecentDays,
@@ -90,6 +92,20 @@ public sealed class MonitoringService(
             var source = sources.Get(monitor.SourceName).Inventory(monitor.SourceQuery);
             var report = await analyst.AnalyzeAsync(source, new AnalysisWindow(asOf, monitor.BaselineDays, monitor.RecentDays), ct);
             await monitors.CompleteRunAsync(runId, report, clock.GetUtcNow(), ct);
+
+            // Dopo il report statistico, il ciclo agentico: incidenti, indagini, raccomandazioni, briefing.
+            if (orchestrator is not null)
+            {
+                try
+                {
+                    var cycle = await orchestrator.RunCycleAsync(monitor, asOf, ct);
+                    await monitors.AnnotateRunAsync(runId, $"Ciclo agentico: {cycle.Changes.Count(c => c.Transition != Domain.Agentic.IncidentTransition.Unchanged)} transizioni, briefing #{cycle.Briefing.Id}.", ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    await monitors.AnnotateRunAsync(runId, $"Ciclo agentico non completato: {ex.Message}", ct);
+                }
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

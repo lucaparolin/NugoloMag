@@ -195,6 +195,10 @@ public sealed class SqlServerSourceDatabase(string name, string connectionString
 
     public IInventoryRepository Inventory(string query) => new DbInventoryRepository(SqlClientFactory.Instance, connectionString, query);
 
+    public string? BuildTaskQuery(SourceMapping mapping) => TaskQueryBuilder.Build(mapping);
+
+    public ITaskRepository Tasks(string query) => new DbTaskRepository(SqlClientFactory.Instance, connectionString, query);
+
     private async Task<SqlConnection> OpenAsync(CancellationToken ct)
     {
         var connection = new SqlConnection(connectionString);

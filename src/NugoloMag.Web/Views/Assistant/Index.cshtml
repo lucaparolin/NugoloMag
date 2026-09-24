@@ -6,7 +6,7 @@
 
 @if (!Model.AgentAvailable)
 {
-    <p class="alert fail">L'assistente richiede Claude: impostare la variabile d'ambiente <code>ANTHROPIC_API_KEY</code> e riavviare l'applicazione.</p>
+    <p class="alert fail">L'assistente richiede un modello linguistico: configurare la sezione <code>Llm</code> di appsettings (Ollama locale, Anthropic o compatibile OpenAI) e riavviare.</p>
 }
 
 <section class="card">

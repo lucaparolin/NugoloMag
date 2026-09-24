@@ -43,5 +43,5 @@ public sealed class TemplateInsightNarrator : IInsightNarrator
     }
 
     public Task<string> AnswerAsync(AnalysisReport report, string question, CancellationToken ct = default) =>
-        Task.FromResult("Le domande in linguaggio naturale richiedono il narratore Claude (impostare ANTHROPIC_API_KEY).");
+        Task.FromResult("Le domande in linguaggio naturale richiedono un modello linguistico (sezione Llm della configurazione).");
 }

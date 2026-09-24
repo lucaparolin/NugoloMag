@@ -18,7 +18,7 @@ public interface IRunReportQuery
 public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitorStore, IRunReportQuery
 {
     private const string MonitorColumns =
-        "MonitorId, Name, SourceName, DiscoveryId, MappingJson, SourceQuery, RunAt, BaselineDays, RecentDays, IsActive, CreatedAt, NextRunAt";
+        "MonitorId, Name, SourceName, DiscoveryId, MappingJson, SourceQuery, RunAt, BaselineDays, RecentDays, IsActive, CreatedAt, NextRunAt, TaskQuery";
     private const string RunColumns =
         "RunId, MonitorId, AsOf, StartedAt, CompletedAt, Status, RowsAnalyzed, FindingsCount, HighCount, Narrative, Error";
 
@@ -27,9 +27,9 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
         await using var connection = await connections.OpenAsync(ct);
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO nugolo.Monitor (Name, SourceName, DiscoveryId, MappingJson, SourceQuery, RunAt, BaselineDays, RecentDays, IsActive, CreatedAt, NextRunAt)
+            INSERT INTO nugolo.Monitor (Name, SourceName, DiscoveryId, MappingJson, SourceQuery, RunAt, BaselineDays, RecentDays, IsActive, CreatedAt, NextRunAt, TaskQuery)
             OUTPUT INSERTED.MonitorId
-            VALUES (@name, @source, @discovery, @mapping, @query, @runAt, @baseline, @recent, @active, @created, @next);
+            VALUES (@name, @source, @discovery, @mapping, @query, @runAt, @baseline, @recent, @active, @created, @next, @taskQuery);
             """;
         cmd.Parameters.Add(Param("@name", SqlDbType.NVarChar, m.Name));
         cmd.Parameters.Add(Param("@source", SqlDbType.NVarChar, m.SourceName));
@@ -42,6 +42,7 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
         cmd.Parameters.Add(Param("@active", SqlDbType.Bit, m.IsActive));
         cmd.Parameters.Add(Param("@created", SqlDbType.DateTimeOffset, m.CreatedAt));
         cmd.Parameters.Add(Param("@next", SqlDbType.DateTimeOffset, FloorToSecond(m.NextRunAt)));
+        cmd.Parameters.Add(Param("@taskQuery", SqlDbType.NVarChar, m.TaskQuery));
         return (long)(await cmd.ExecuteScalarAsync(ct))!;
     }
 
@@ -143,6 +144,16 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    public async Task AnnotateRunAsync(long runId, string note, CancellationToken ct = default)
+    {
+        await using var connection = await connections.OpenAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE nugolo.MonitorRun SET Error = @note WHERE RunId = @id AND Status = 'succeeded';";
+        cmd.Parameters.Add(Param("@note", SqlDbType.NVarChar, note));
+        cmd.Parameters.Add(Param("@id", SqlDbType.BigInt, runId));
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public Task<IReadOnlyList<MonitorRun>> ListRunsAsync(long monitorId, int take, CancellationToken ct = default) =>
         QueryRuns($"SELECT TOP (@take) {RunColumns} FROM nugolo.MonitorRun WHERE MonitorId = @monitor ORDER BY RunId DESC;", c =>
         {
@@ -186,7 +197,8 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
                 RecentDays = r.GetInt32(8),
                 IsActive = r.GetBoolean(9),
                 CreatedAt = r.GetDateTimeOffset(10),
-                NextRunAt = r.IsDBNull(11) ? null : r.GetDateTimeOffset(11)
+                NextRunAt = r.IsDBNull(11) ? null : r.GetDateTimeOffset(11),
+                TaskQuery = r.IsDBNull(12) ? null : r.GetString(12)
             });
         }
         return result;

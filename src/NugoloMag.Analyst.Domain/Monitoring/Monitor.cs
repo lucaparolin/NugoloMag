@@ -11,6 +11,8 @@ public sealed record MonitorDefinition
     public required long DiscoveryId { get; init; }
     public required SourceMapping Mapping { get; init; }
     public required string SourceQuery { get; init; }
+    /// <summary>Query delle missioni (null se la sorgente non le ha): abilita l'agente Produttività.</summary>
+    public string? TaskQuery { get; init; }
     public required TimeOnly RunAt { get; init; }
     public required int BaselineDays { get; init; }
     public required int RecentDays { get; init; }

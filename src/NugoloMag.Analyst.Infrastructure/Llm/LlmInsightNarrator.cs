@@ -1,19 +1,17 @@
-using Anthropic;
-using Anthropic.Models.Beta.Messages;
+using NugoloMag.Analyst.Application.Llm;
 using NugoloMag.Analyst.Application.Abstractions;
 using NugoloMag.Analyst.Domain;
 using NugoloMag.Analyst.Infrastructure.Reports;
 using NugoloMag.Analyst.Infrastructure.Serialization;
 
-namespace NugoloMag.Analyst.Infrastructure.Claude;
+namespace NugoloMag.Analyst.Infrastructure.Llm;
 
 /// <summary>
-/// Narratore basato su Claude. I numeri li producono i detector statistici; l'LLM li interpreta,
+/// Narratore basato su un LLM qualsiasi (Claude, OpenAI-compatibile, Ollama). I numeri li producono i detector statistici; l'LLM li interpreta,
 /// li collega tra loro e li scrive come farebbe un analista. Se la chiamata fallisce si usa il fallback.
 /// </summary>
-public sealed class ClaudeInsightNarrator(AnthropicClient client, IInsightNarrator fallback, string model = ClaudeInsightNarrator.DefaultModel) : IInsightNarrator
+public sealed class LlmInsightNarrator(IChatModel model, IInsightNarrator fallback) : IInsightNarrator
 {
-    public const string DefaultModel = "claude-opus-5";
 
     private const string SystemPrompt = """
         Sei un analista senior di logistica e supply chain. Ricevi in JSON i risultati di un motore statistico
@@ -43,7 +41,7 @@ public sealed class ClaudeInsightNarrator(AnthropicClient client, IInsightNarrat
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var text = await fallback.NarrateAsync(report, ct);
-            return $"{text}\n(Sintesi automatica: Claude non disponibile — {ex.Message})";
+            return $"{text}\n(Sintesi automatica: modello non disponibile — {ex.Message})";
         }
     }
 
@@ -54,24 +52,11 @@ public sealed class ClaudeInsightNarrator(AnthropicClient client, IInsightNarrat
     {
         var json = NugoloJson.Serialize(ReportDocument.From(report, includeNarrative: false));
 
-        var response = await client.Beta.Messages.Create(new MessageCreateParams
-        {
-            Model = model,
-            MaxTokens = 16000,
-            System = SystemPrompt,
-            // In caso di rifiuto dei classificatori di sicurezza il server ripiega su un altro modello.
-            Betas = ["server-side-fallback-2026-07-01"],
-            Fallbacks = new Default(),
-            Messages =
-            [
-                new() { Role = Role.User, Content = $"<report>\n{json}\n</report>\n\n{instruction}" }
-            ]
-        }, ct);
+        var response = await model.CompleteAsync(new ChatRequest(SystemPrompt,
+            [ChatMessage.User($"<report>\n{json}\n</report>\n\n{instruction}")], [], MaxTokens: 4000), ct);
 
-        if (response.StopReason == "refusal")
-            throw new InvalidOperationException("Claude ha rifiutato la richiesta.");
-
-        var text = string.Concat(response.Content.Select(b => b.Value).OfType<BetaTextBlock>().Select(t => t.Text));
-        return string.IsNullOrWhiteSpace(text) ? throw new InvalidOperationException("Risposta vuota.") : text.Trim();
+        if (response.Stop == ChatStop.Refusal) throw new InvalidOperationException("Il modello ha rifiutato la richiesta.");
+        var text = response.Text.Trim();
+        return text.Length == 0 ? throw new InvalidOperationException("Risposta vuota.") : text;
     }
 }

@@ -14,6 +14,18 @@ public static class ColumnClassifier
     // L'ordine conta: i ruoli più specifici (carico/scarico/giacenza) vengono prima della quantità generica.
     private static readonly Rule[] Rules =
     [
+        new(ColumnRole.StartTime, ["inizio", "datainizio", "orainizio", "dtinizio", "start", "starttime", "startedat", "begin", "begintime"],
+            ["inizio", "start", "begin"], c => c.IsDate),
+        new(ColumnRole.EndTime, ["fine", "datafine", "orafine", "dtfine", "end", "endtime", "endedat", "finish", "completedat", "chiusura"],
+            ["fine", "endtime", "endedat", "finish", "complet", "chiusur"], c => c.IsDate),
+        new(ColumnRole.Activity, ["attivita", "activity", "tipomissione", "tipoattivita", "tasktype", "operazione", "fase"],
+            ["attivit", "activity", "tipomission", "tasktype"], c => c.IsKeyLike),
+        new(ColumnRole.Zone, ["zona", "zone", "area", "codzona", "zoneid", "zonecode"],
+            ["zona", "zone"], c => c.IsKeyLike),
+        new(ColumnRole.Location, ["ubicazione", "ubic", "location", "locazione", "bin", "slot", "cella", "codubicazione"],
+            ["ubicaz", "location", "locaz"], c => c.IsKeyLike),
+        new(ColumnRole.OrderRef, ["ordine", "numordine", "idordine", "nrordine", "order", "orderid", "ordernumber", "ordernr"],
+            ["ordine", "order"], c => c.IsKeyLike),
         new(ColumnRole.InboundQuantity, ["qtacar", "qtacarico", "qtaent", "qtain", "inqty", "qtyin"],
             ["carico", "carichi", "caricat", "entrat", "inbound", "ricevut", "received"], c => c.IsNumeric),
         new(ColumnRole.OutboundQuantity, ["qtasca", "qtascarico", "qtausc", "qtaout", "outqty", "qtyout"],
@@ -56,7 +68,8 @@ public static class ColumnClassifier
         }
 
         // Una data senza nome riconoscibile è comunque una data: la teniamo con punteggio basso.
-        if (result.All(a => a.Role != ColumnRole.Date) && table.Columns.FirstOrDefault(c => c.IsDate) is { } anyDate)
+        // (tranne nelle tabelle di attività, dove le date sono inizio e fine, non la data del movimento).
+        if (result.All(a => a.Role is not (ColumnRole.Date or ColumnRole.StartTime or ColumnRole.EndTime)) && table.Columns.FirstOrDefault(c => c.IsDate) is { } anyDate)
             result.Add(new ColumnAssignment(ColumnRole.Date, anyDate.Name, 30));
 
         return result;

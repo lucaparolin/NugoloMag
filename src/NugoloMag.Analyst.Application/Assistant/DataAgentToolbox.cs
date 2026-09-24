@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using NugoloMag.Analyst.Application.Discovery;
+using NugoloMag.Analyst.Application.Llm;
 using NugoloMag.Analyst.Domain.Assistant;
 using NugoloMag.Analyst.Domain.Discovery;
 
@@ -16,7 +17,7 @@ public sealed class DataAgentToolbox(
     DatabaseCatalog catalog,
     ISavedQueryStore savedQueries,
     long conversationId,
-    TimeProvider clock) : IDataAgentToolbox
+    TimeProvider clock) : IToolbox
 {
     public const int MaxRowsForModel = 200;
     private const int MaxCellLength = 80;

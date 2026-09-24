@@ -5,7 +5,7 @@ using NugoloMag.Web.ViewModels;
 
 namespace NugoloMag.Web.Controllers;
 
-public sealed class HomeController(IMonitorStore monitors, IDiscoveryStore discoveries, ISourceRegistry sources, bool claudeEnabled) : Controller
+public sealed class HomeController(IMonitorStore monitors, IDiscoveryStore discoveries, ISourceRegistry sources, bool llmEnabled) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -14,7 +14,7 @@ public sealed class HomeController(IMonitorStore monitors, IDiscoveryStore disco
         foreach (var monitor in await monitors.ListAsync(ct))
             rows.Add(new MonitorRow(monitor, (await monitors.ListRunsAsync(monitor.Id, 1, ct)).FirstOrDefault()));
 
-        return View(new DashboardViewModel(rows, await discoveries.ListAsync(10, ct), sources.Names, claudeEnabled));
+        return View(new DashboardViewModel(rows, await discoveries.ListAsync(10, ct), sources.Names, llmEnabled));
     }
 
     [HttpGet]

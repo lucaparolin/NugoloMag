@@ -40,6 +40,7 @@ public sealed record DiscoveryReport
     public IReadOnlyList<CodeFrequency> MovementCodes { get; init; } = [];
     public SourceMapping? Mapping { get; init; }
     public string? SourceQuery { get; init; }
+    public string? TaskQuery { get; init; }
     public SourceValidation? Validation { get; init; }
     public string? AdvisorNotes { get; init; }
     public required Readiness Readiness { get; init; }

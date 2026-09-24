@@ -8,7 +8,7 @@
     <div>
         <h2>Analizza un database</h2>
         <p class="muted">L'agente legge lo schema, riconosce movimenti, saldi e anagrafiche, interpreta le causali e prova la query sui dati reali.
-            Sola lettura: nel gestionale non viene scritto nulla.@(Model.ClaudeEnabled ? " Claude rivede la proposta." : "")</p>
+            Sola lettura: nel gestionale non viene scritto nulla.@(Model.LlmEnabled ? " Il modello linguistico rivede la proposta." : "")</p>
         @if (Model.Sources.Count == 0)
         {
             <p class="alert fail">Nessuna sorgente configurata: aggiungere una stringa di connessione nella sezione <code>Sources</code> di appsettings.</p>

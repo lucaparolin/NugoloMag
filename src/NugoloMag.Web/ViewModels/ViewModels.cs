@@ -12,7 +12,7 @@ public sealed record DashboardViewModel(
     IReadOnlyList<MonitorRow> Monitors,
     IReadOnlyList<DiscoverySummary> Discoveries,
     IReadOnlyList<string> Sources,
-    bool ClaudeEnabled,
+    bool LlmEnabled,
     string? Error = null);
 
 public sealed record DiscoveryReviewViewModel(

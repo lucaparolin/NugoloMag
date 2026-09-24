@@ -121,8 +121,9 @@ public sealed class DatabaseDiscoveryAgent(SourceValidator validator, ISchemaAdv
         ISourceDatabase source, DiscoveryReport draft, SourceMapping mapping, Trace trace, CodeClassification? codes, CancellationToken ct)
     {
         var query = source.BuildInventoryQuery(mapping);
+        var taskQuery = source.BuildTaskQuery(mapping);
         var validation = await trace.Run("Prova della query sui dati reali",
-            () => validator.ValidateAsync(source, query, Today(), ct),
+            () => validator.ValidateAsync(source, query, taskQuery, Today(), ct),
             v => v.Checks.Select(c => $"{Icon(c.Status)} {c.Name}: {c.Detail}").ToList(),
             v => v.HasFailures ? StepStatus.Failed : v.Checks.Any(c => c.Status == StepStatus.Warning) ? StepStatus.Warning : StepStatus.Ok);
 
@@ -136,6 +137,7 @@ public sealed class DatabaseDiscoveryAgent(SourceValidator validator, ISchemaAdv
             Steps = trace.Steps,
             Mapping = mapping,
             SourceQuery = query,
+            TaskQuery = taskQuery,
             Validation = validation,
             Readiness = readiness,
             AdvisorNotes = null
@@ -146,13 +148,13 @@ public sealed class DatabaseDiscoveryAgent(SourceValidator validator, ISchemaAdv
             var notes = await advisor.ReviewAsync(report, ct);
             if (notes is not null)
             {
-                trace.Add("Revisione di Claude", StepStatus.Ok, ["Commento disponibile sotto la proposta."]);
+                trace.Add("Revisione del modello linguistico", StepStatus.Ok, ["Commento disponibile sotto la proposta."]);
                 report = report with { Steps = trace.Steps, AdvisorNotes = notes };
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            trace.Add("Revisione di Claude", StepStatus.Skipped, [$"Non disponibile: {ex.Message}"]);
+            trace.Add("Revisione del modello linguistico", StepStatus.Skipped, [$"Non disponibile: {ex.Message}"]);
             report = report with { Steps = trace.Steps };
         }
 
@@ -179,7 +181,7 @@ public sealed class DatabaseDiscoveryAgent(SourceValidator validator, ISchemaAdv
     private static IReadOnlyList<string> Describe(IReadOnlyList<TableCandidate> candidates)
     {
         var lines = new List<string>();
-        foreach (var (role, label) in new[] { (TableRole.Movements, "Movimenti"), (TableRole.StockSnapshot, "Saldi"), (TableRole.ItemMaster, "Anagrafica articoli") })
+        foreach (var (role, label) in new[] { (TableRole.Movements, "Movimenti"), (TableRole.StockSnapshot, "Saldi"), (TableRole.ItemMaster, "Anagrafica articoli"), (TableRole.Tasks, "Missioni") })
         {
             var top = candidates.Where(c => c.Role == role).OrderByDescending(c => c.Score).Take(3).ToList();
             lines.Add(top.Count == 0
@@ -194,6 +196,7 @@ public sealed class DatabaseDiscoveryAgent(SourceValidator validator, ISchemaAdv
         var names = candidates.Select(c => c.Table).ToHashSet();
         if (mapping?.Items is { } items) names.Add(items.Table);
         if (mapping?.Snapshot is { } snap) names.Add(snap.Table);
+        if (mapping?.Tasks is { } tasks) names.Add(tasks.Table);
         return names.Select(catalog.Find).OfType<CatalogTable>().ToList();
     }
 

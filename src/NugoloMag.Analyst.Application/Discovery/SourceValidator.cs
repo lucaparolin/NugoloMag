@@ -6,7 +6,35 @@ namespace NugoloMag.Analyst.Application.Discovery;
 /// <summary>Prova la query generata sugli ultimi giorni reali e controlla che i dati abbiano senso.</summary>
 public sealed class SourceValidator(int days = 14, int previewRows = 20)
 {
-    public async Task<SourceValidation> ValidateAsync(ISourceDatabase source, string query, DateOnly asOf, CancellationToken ct)
+    public async Task<SourceValidation> ValidateAsync(ISourceDatabase source, string query, string? taskQuery, DateOnly asOf, CancellationToken ct)
+    {
+        var validation = await ValidateInventoryAsync(source, query, asOf, ct);
+        if (taskQuery is null || validation.HasFailures) return validation;
+        return validation with { Checks = [.. validation.Checks, await ValidateTasksAsync(source, taskQuery, asOf, ct)] };
+    }
+
+    private async Task<ValidationCheck> ValidateTasksAsync(ISourceDatabase source, string taskQuery, DateOnly asOf, CancellationToken ct)
+    {
+        try
+        {
+            var tasks = await source.Tasks(taskQuery).LoadAsync(asOf.AddDays(-(days - 1)), asOf, ct);
+            if (tasks.Count == 0) return new ValidationCheck("Missioni", StepStatus.Warning, "nessuna missione nel periodo: la produttività non sarà analizzata");
+            var zones = tasks.Select(t => t.Zone).Distinct().Count();
+            var invalid = tasks.Count(t => t.EndedAt <= t.StartedAt || t.Minutes > 240);
+            return invalid / (double)tasks.Count > 0.05
+                ? new ValidationCheck("Missioni", StepStatus.Warning, $"{tasks.Count:N0} missioni, ma {invalid:N0} con durata nulla o anomala: verificare le colonne inizio/fine")
+                : new ValidationCheck("Missioni", StepStatus.Ok, $"{tasks.Count:N0} missioni in {zones} zone, durata mediana {TimeSeriesMedian(tasks):0.0} minuti");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new ValidationCheck("Missioni", StepStatus.Warning, $"query delle missioni non eseguibile: {ex.Message}");
+        }
+    }
+
+    private static double TimeSeriesMedian(IReadOnlyList<WarehouseTask> tasks) =>
+        TimeSeries.Median(tasks.Select(t => t.Minutes).ToArray());
+
+    private async Task<SourceValidation> ValidateInventoryAsync(ISourceDatabase source, string query, DateOnly asOf, CancellationToken ct)
     {
         var from = asOf.AddDays(-(days - 1));
         IReadOnlyList<StockDay> rows;

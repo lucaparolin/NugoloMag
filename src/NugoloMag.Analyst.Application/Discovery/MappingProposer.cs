@@ -67,7 +67,20 @@ public static class MappingProposer
         }
 
         var items = ItemMaster(catalog, candidates, mov, notes);
-        return new MappingProposal(new SourceMapping(movements, snapshotSource, items), notes, codes);
+
+        TaskSource? tasks = null;
+        if (Best(candidates, TableRole.Tasks) is { } t && t.ColumnFor(ColumnRole.StartTime) is { } start && t.ColumnFor(ColumnRole.EndTime) is { } end)
+        {
+            tasks = new TaskSource(t.Table, t.ColumnFor(ColumnRole.Warehouse), start, end, t.ColumnFor(ColumnRole.Zone), t.ColumnFor(ColumnRole.Activity),
+                t.ColumnFor(ColumnRole.OrderRef), t.ColumnFor(ColumnRole.Item), t.ColumnFor(ColumnRole.Location), t.ColumnFor(ColumnRole.Quantity));
+            notes.Add($"Missioni di magazzino da {t.Table} (inizio {start}, fine {end}, zona {tasks.ZoneColumn ?? "-"}): abilitano l'analisi di produttività.");
+        }
+        else
+        {
+            notes.Add("Nessuna tabella di missioni con tempi: l'agente Produttività resterà inattivo.");
+        }
+
+        return new MappingProposal(new SourceMapping(movements, snapshotSource, items, Tasks: tasks), notes, codes);
     }
 
     private static MovementSource Movement(TableCandidate mov, string? warehouse, MovementDirection direction,

@@ -48,6 +48,9 @@ public sealed class StoreSchemaInstaller(SqlConnectionFactory connections)
             ReportJson    nvarchar(max)     NULL,
             Error         nvarchar(max)     NULL);
 
+        IF COL_LENGTH(N'nugolo.Monitor', N'TaskQuery') IS NULL
+            ALTER TABLE nugolo.Monitor ADD TaskQuery nvarchar(max) NULL;
+
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MonitorRun_Monitor' AND object_id = OBJECT_ID(N'nugolo.MonitorRun'))
         CREATE INDEX IX_MonitorRun_Monitor ON nugolo.MonitorRun (MonitorId, StartedAt DESC);
 

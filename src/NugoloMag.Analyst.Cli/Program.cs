@@ -1,5 +1,4 @@
 using System.Globalization;
-using Anthropic;
 using Microsoft.Data.SqlClient;
 using NugoloMag.Analyst.Application;
 using NugoloMag.Analyst.Application.Abstractions;
@@ -8,7 +7,7 @@ using NugoloMag.Analyst.Application.Discovery;
 using NugoloMag.Analyst.Application.Narration;
 using NugoloMag.Analyst.Application.RootCause;
 using NugoloMag.Analyst.Domain;
-using NugoloMag.Analyst.Infrastructure.Claude;
+using NugoloMag.Analyst.Infrastructure.Llm;
 using NugoloMag.Analyst.Infrastructure.Data;
 using NugoloMag.Analyst.Infrastructure.Demo;
 using NugoloMag.Analyst.Infrastructure.Reports;
@@ -125,10 +124,18 @@ static IInventoryRepository CreateRepository(CliOptions options)
 static IInsightNarrator CreateNarrator(CliOptions options)
 {
     var template = new TemplateInsightNarrator();
-    if (options.Has("no-llm") || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")))
-        return template;
+    if (options.Has("no-llm")) return template;
 
-    return new ClaudeInsightNarrator(new AnthropicClient(), template, options.Get("model") ?? ClaudeInsightNarrator.DefaultModel);
+    // --llm ollama|openai|anthropic --model <id> [--llm-url <base url>]; per anthropic la chiave è in ANTHROPIC_API_KEY.
+    var llm = new LlmOptions
+    {
+        Provider = options.Get("llm") ?? (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")) ? "none" : "anthropic"),
+        Model = options.Get("model") ?? (options.Get("llm") == "ollama" ? "qwen2.5:7b" : AnthropicChatModel.DefaultModel),
+        BaseUrl = options.Get("llm-url"),
+        ApiKeyEnvironmentVariable = options.Get("llm") == "openai" ? "OPENAI_API_KEY" : null
+    };
+    var model = ChatModelFactory.Create(llm, new HttpClient { Timeout = TimeSpan.FromSeconds(llm.TimeoutSeconds) });
+    return model is null ? template : new LlmInsightNarrator(model, template);
 }
 
 internal sealed class CliOptions
@@ -144,7 +151,8 @@ internal sealed class CliOptions
           nugolomag discover --connection "..." [--show-query]     analisi del database (agente)
           nugolomag seed-demo --master "..." [--asof yyyy-MM-dd]   crea il database GestionaleDemo
 
-        Con ANTHROPIC_API_KEY impostata la sintesi è scritta da Claude; altrimenti da un template deterministico.
+        Sintesi scritta da un LLM: --llm ollama|openai|anthropic --model <id> [--llm-url <url>]
+        (con ANTHROPIC_API_KEY impostata il default è Claude); senza LLM, o con --no-llm, da un template deterministico.
         Exit code 2 se ci sono finding ad alta priorità (utile per alert da job schedulati).
         """;
 

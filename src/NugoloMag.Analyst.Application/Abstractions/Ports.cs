@@ -8,6 +8,12 @@ public interface IInventoryRepository
     Task<IReadOnlyList<StockDay>> LoadAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
 }
 
+/// <summary>Sorgente delle missioni di magazzino (per la produttività).</summary>
+public interface ITaskRepository
+{
+    Task<IReadOnlyList<WarehouseTask>> LoadAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
+}
+
 /// <summary>Un singolo "agente" statistico che cerca un tipo di cambiamento. Nessun LLM qui.</summary>
 public interface IChangeDetector
 {

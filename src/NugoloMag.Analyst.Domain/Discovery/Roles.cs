@@ -13,7 +13,13 @@ public enum ColumnRole
     OnHand,
     MovementType,
     UnitCost,
-    Description
+    Description,
+    StartTime,
+    EndTime,
+    Zone,
+    Activity,
+    OrderRef,
+    Location
 }
 
 /// <summary>Il ruolo di una tabella nel modello di magazzino.</summary>
@@ -21,7 +27,9 @@ public enum TableRole
 {
     Movements,
     StockSnapshot,
-    ItemMaster
+    ItemMaster,
+    /// <summary>Missioni/attività di magazzino con tempi (per la produttività).</summary>
+    Tasks
 }
 
 public sealed record ColumnAssignment(ColumnRole Role, string Column, int Score);

@@ -33,6 +33,7 @@ public sealed class DemoErpSeeder(string masterConnectionString, string database
         await BulkAsync(connection, "dbo.Articoli", Articoli(rows), ct);
         await BulkAsync(connection, "dbo.MovMag", Movimenti(rows), ct);
         await BulkAsync(connection, "dbo.SaldiMagazzino", Saldi(rows, asOf), ct);
+        await BulkAsync(connection, "dbo.MissioniMagazzino", Missioni(new SyntheticTaskGenerator().Generate(rows, asOf)), ct);
         await ExecuteAsync(cs, Noise, ct);
     }
 
@@ -54,6 +55,19 @@ public sealed class DemoErpSeeder(string masterConnectionString, string database
         CREATE TABLE dbo.SaldiMagazzino (
             CodMag nvarchar(10) NOT NULL, CodArt nvarchar(20) NOT NULL, Giacenza decimal(12,3) NOT NULL,
             DataAggiornamento date NOT NULL, PRIMARY KEY (CodMag, CodArt));
+        CREATE TABLE dbo.MissioniMagazzino (
+            IdMissione int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            CodMag nvarchar(10) NOT NULL REFERENCES dbo.Magazzini(CodMag),
+            Attivita nvarchar(10) NOT NULL,
+            Zona nvarchar(5) NOT NULL,
+            NumOrdine nvarchar(20) NULL,
+            CodArt nvarchar(20) NULL,
+            Ubicazione nvarchar(20) NULL,
+            Quantita decimal(12,3) NOT NULL,
+            Operatore nvarchar(20) NOT NULL,
+            Inizio datetime2(0) NOT NULL,
+            Fine datetime2(0) NULL);
+        CREATE INDEX IX_Missioni_Inizio ON dbo.MissioniMagazzino (Inizio);
         INSERT INTO dbo.Causali VALUES ('CAR', N'Carico da fornitore'), ('VEN', N'Vendita'), ('INV', N'Rettifica inventariale'), ('INI', N'Saldo iniziale');
         """;
 
@@ -123,6 +137,17 @@ public sealed class DemoErpSeeder(string masterConnectionString, string database
         return t;
     }
 
+    private static DataTable Missioni(IReadOnlyList<DemoTask> tasks)
+    {
+        var t = Table(("IdMissione", typeof(int)), ("CodMag", typeof(string)), ("Attivita", typeof(string)), ("Zona", typeof(string)),
+            ("NumOrdine", typeof(string)), ("CodArt", typeof(string)), ("Ubicazione", typeof(string)), ("Quantita", typeof(decimal)),
+            ("Operatore", typeof(string)), ("Inizio", typeof(DateTime)), ("Fine", typeof(DateTime)));
+        foreach (var (task, op) in tasks)
+            t.Rows.Add(DBNull.Value, task.Warehouse.Value, task.Activity, task.Zone, task.OrderRef, (object?)task.Sku?.Value ?? DBNull.Value,
+                (object?)task.Location ?? DBNull.Value, task.Quantity, op, task.StartedAt, task.EndedAt);
+        return t;
+    }
+
     private static DataTable Table(params (string Name, Type Type)[] columns)
     {
         var t = new DataTable();
@@ -134,7 +159,7 @@ public sealed class DemoErpSeeder(string masterConnectionString, string database
     {
         using var bulk = new SqlBulkCopy(connection, SqlBulkCopyOptions.KeepNulls, null) { DestinationTableName = table, BulkCopyTimeout = 300 };
         foreach (DataColumn c in data.Columns)
-            if (!(table == "dbo.MovMag" && c.ColumnName == "IdMov")) bulk.ColumnMappings.Add(c.ColumnName, c.ColumnName);
+            if (c.ColumnName is not ("IdMov" or "IdMissione")) bulk.ColumnMappings.Add(c.ColumnName, c.ColumnName);
         await bulk.WriteToServerAsync(data, ct);
     }
 

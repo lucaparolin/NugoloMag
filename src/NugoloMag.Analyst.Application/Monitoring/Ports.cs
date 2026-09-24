@@ -14,6 +14,8 @@ public interface IMonitorStore
     Task<long> StartRunAsync(MonitorRun run, CancellationToken ct = default);
     Task CompleteRunAsync(long runId, AnalysisReport report, DateTimeOffset completedAt, CancellationToken ct = default);
     Task FailRunAsync(long runId, string error, DateTimeOffset completedAt, CancellationToken ct = default);
+    /// <summary>Nota informativa sull'esecuzione (es. esito del ciclo agentico), senza cambiarne lo stato.</summary>
+    Task AnnotateRunAsync(long runId, string note, CancellationToken ct = default);
     Task<IReadOnlyList<MonitorRun>> ListRunsAsync(long monitorId, int take, CancellationToken ct = default);
     Task<MonitorRun?> GetRunAsync(long runId, CancellationToken ct = default);
 }

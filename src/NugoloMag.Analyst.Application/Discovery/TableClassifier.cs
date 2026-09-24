@@ -9,6 +9,7 @@ public static class TableClassifier
 
     private static readonly string[] MovementNames = ["mov", "transaz", "transaction", "trans", "ledger", "giornale", "storico", "history"];
     private static readonly string[] SnapshotNames = ["saldi", "saldo", "giacenz", "esistenz", "snapshot", "inventory", "inventario", "stock"];
+    private static readonly string[] TaskNames = ["mission", "task", "attivit", "prelie", "picking", "lavoraz", "operaz", "activity"];
     private static readonly string[] ItemNames = ["articol", "anagraf", "item", "product", "prodott", "sku"];
 
     public static IReadOnlyList<TableCandidate> Classify(DatabaseCatalog catalog, int topPerRole = 5)
@@ -20,6 +21,7 @@ public static class TableClassifier
             if (Movements(table, columns) is { } m) all.Add(m);
             if (Snapshot(table, columns) is { } s) all.Add(s);
             if (ItemMaster(table, columns) is { } i) all.Add(i);
+            if (Tasks(table, columns) is { } k) all.Add(k);
         }
 
         return all
@@ -76,6 +78,22 @@ public static class TableClassifier
         if (Has(ColumnRole.Date) && (Has(ColumnRole.Quantity) || Has(ColumnRole.OnHand))) { score -= 30; reasons.Add("ha date e quantità: sembra una tabella di fatti"); }
 
         return new TableCandidate(table.Name, TableRole.ItemMaster, Math.Clamp(score, 0, 100), cols, reasons);
+    }
+
+    private static TableCandidate? Tasks(CatalogTable table, IReadOnlyList<ColumnAssignment> cols)
+    {
+        bool Has(ColumnRole r) => cols.Any(c => c.Role == r);
+        if (!Has(ColumnRole.StartTime) || !Has(ColumnRole.EndTime) || !(Has(ColumnRole.Zone) || Has(ColumnRole.Activity))) return null;
+
+        var reasons = new List<string> { "ha inizio e fine dell'attività" };
+        var score = 40;
+        score += NameBonus(table, TaskNames, 20, reasons, "il nome richiama missioni o attività");
+        if (Has(ColumnRole.Zone)) { score += 10; reasons.Add("ha la zona"); }
+        if (Has(ColumnRole.Activity)) { score += 5; reasons.Add("ha il tipo di attività"); }
+        if (Has(ColumnRole.OrderRef)) { score += 5; reasons.Add("ha il riferimento ordine"); }
+        if (Has(ColumnRole.Item)) { score += 5; reasons.Add("ha l'articolo"); }
+        score += SizeBonus(table, reasons);
+        return new TableCandidate(table.Name, TableRole.Tasks, Math.Clamp(score, 0, 100), cols, reasons);
     }
 
     private static bool IsKeyedByItem(CatalogTable table, IReadOnlyList<ColumnAssignment> cols)
