@@ -1,0 +1,76 @@
+@model RunDetailsViewModel
+@{
+    var run = Model.Run;
+    var doc = Model.Report;
+}
+<p class="crumbs"><a href="/">Dashboard</a> › <a href="/Monitors/Details/@Model.Monitor.Id">@Model.Monitor.Name</a> › @run.AsOf.ToString("dd/MM/yyyy")</p>
+<h1>Analisi magazzini al @run.AsOf.ToString("dd/MM/yyyy")</h1>
+
+@if (run.Status == RunStatus.Failed)
+{
+    <p class="alert fail">Esecuzione fallita: @run.Error</p>
+}
+else if (doc is null)
+{
+    <p class="muted">Esecuzione in corso.</p>
+}
+else
+{
+    <p class="lead">Baseline @doc.BaselineFrom → @doc.BaselineTo · periodo recente @doc.RecentFrom → @doc.RecentTo</p>
+    <div class="kpis">
+        <div class="kpi"><b>@doc.Warehouses.Count</b><span>magazzini</span></div>
+        <div class="kpi"><b>@Display.Number(doc.RowsAnalyzed)</b><span>righe analizzate</span></div>
+        <div class="kpi"><b>@doc.Findings.Count</b><span>cambiamenti rilevanti</span></div>
+        <div class="kpi"><b class="text-fail">@doc.Findings.Count(f => f.Severity == "high")</b><span>alta priorità</span></div>
+    </div>
+
+    <h2>Sintesi dell'analista</h2>
+    <div class="card prose accent">@doc.Narrative</div>
+
+    <h2>Cambiamenti rilevati, per importanza</h2>
+    @foreach (var f in doc.Findings)
+    {
+        <section class="card finding">
+            <h3>@f.Rank. @f.Headline</h3>
+            <div class="tags">
+                <span class="badge @Display.Severity(f.Severity)">@f.SeverityLabel</span>
+                <span class="tag">@f.KindLabel</span>
+                <span class="tag">magnitudo @f.Magnitude.ToString("0")/100</span>
+                <span class="tag">@f.Subject</span>
+            </div>
+            <div class="grid-2">
+                <div>
+                    @Html.Raw(Display.Sparkline(f.History, doc.RecentFrom))
+                    @if (f.Evidence.Count > 0)
+                    {
+                        <ul class="small">
+                            @foreach (var (k, v) in f.Evidence) { <li>@k: <b>@v</b></li> }
+                        </ul>
+                    }
+                </div>
+                <div>
+                    @if (f.RootCauses.Count > 0)
+                    {
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Driver</th><th>Segmento</th><th class="num">Prima</th><th class="num">Ora</th><th class="num">Quota</th></tr></thead>
+                                <tbody>
+                                @foreach (var c in f.RootCauses)
+                                {
+                                    var mix = f.Kind == "mix-drift";
+                                    <tr>
+                                        <td>@c.Dimension</td><td>@c.Member</td>
+                                        <td class="num">@(mix ? Display.Percent(c.Baseline) : Display.Number(c.Baseline))</td>
+                                        <td class="num">@(mix ? Display.Percent(c.Current) : Display.Number(c.Current))</td>
+                                        <td class="num"><span class="bar" style="width:@((int)Math.Round(Math.Clamp(c.Share, 0, 1) * 60))px"></span> @Display.Percent(c.Share)</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+}

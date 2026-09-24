@@ -28,7 +28,7 @@ public sealed class MarkdownReportWriter : IReportWriter
             sb.AppendLine();
             sb.AppendLine($"### {i}. {f.Headline}");
             sb.AppendLine();
-            sb.AppendLine($"**{MetricLabels.Italian(f.Kind)}** · priorità {f.Severity} · magnitudo {f.Magnitude:0}/100 · `{f.Subject}`");
+            sb.AppendLine($"**{MetricLabels.Italian(f.Kind)}** · {MetricLabels.Italian(f.Severity)} · magnitudo {f.Magnitude:0}/100 · `{f.Subject}`");
             if (f.Evidence.Count > 0)
             {
                 sb.AppendLine();

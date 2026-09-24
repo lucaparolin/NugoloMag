@@ -34,23 +34,93 @@ Le scelte statistiche sono fatte per dati di magazzino:
 - **Trend su media mobile a 7 giorni.** Il ciclo settimanale non viene scambiato per un trend.
 - **Dati incompleti.** Se un magazzino non ha caricato i dati, quel magazzino viene escluso dagli altri controlli, così non escono falsi "articoli fermi".
 
+## Web app (ASP.NET Core MVC): prima l'analisi del DB, poi il monitoraggio
+
+```
+ 1. Analisi del database (agente)            2. Revisione              3. Monitoraggio
+ ───────────────────────────────            ─────────────             ───────────────
+ schema (sys.*) → classificazione tabelle   mapping modificabile      worker in background
+ → profilazione dati → causali              (tabelle, colonne,        → ogni giorno all'orario scelto
+ → proposta di mapping → query T-SQL        causali) + nuova prova    → analisi di ieri vs baseline
+ → prova sui dati reali → [Claude]          → "Attiva monitoraggio"   → report salvato + dashboard
+```
+
+**L'agente** (`DatabaseDiscoveryAgent`) lavora in sola lettura e lascia una traccia di ogni passo:
+
+1. **Schema.** Legge tabelle, viste, colonne, chiavi primarie e foreign key dalle viste di sistema `sys.*`.
+2. **Classificazione.** Riconosce le colonne dal nome (italiano e inglese: `CodArt`, `QtaCar`, `Causale`, `Giacenza`...) e dal tipo, poi assegna alle tabelle un ruolo con punteggio e motivazioni: movimenti, saldi, anagrafica articoli.
+3. **Profilazione.** Per ogni candidata conta righe, date, articoli, magazzini e attività degli ultimi 30 giorni. Scarta le tabelle ferme e i "saldi correnti" che non hanno storico.
+4. **Proposta.** Deduce il verso dei movimenti in uno di tre modi: dalla causale (CAR/VEN/INV...), dal segno della quantità, oppure da colonne separate di carico e scarico. Collega l'anagrafica tramite foreign key.
+5. **Prova.** Genera la query T-SQL (giacenza come somma progressiva o da saldi storici) e la esegue sugli ultimi 14 giorni. Controlla freschezza, uscite, giacenze negative, categorie e costi mancanti.
+6. **Secondo parere (facoltativo).** Claude commenta la proposta. Non modifica nulla da solo.
+
+L'esito è **Pronto**, **Da rivedere** o **Bloccato**. Il monitoraggio si può attivare solo se l'analisi non è bloccata.
+
+**Sicurezza**
+- Le stringhe di connessione restano in configurazione (`Sources`); nel browser e nel database viaggia solo il nome della sorgente.
+- Il mapping modificato dall'utente accetta solo tabelle e colonne presenti nel catalogo analizzato. Gli identificatori sono sempre quotati e le causali passano con escape.
+- Si consiglia un login SQL con solo `db_datareader` sul gestionale.
+
 ## Architettura
 
-Si parte dal modello di dominio, le dipendenze vanno solo verso l'interno e l'accesso ai dati è in ADO.NET puro (niente EF).
+Si parte dal modello di dominio, secondo i principi SOLID. L'accesso ai dati è in ADO.NET puro: niente Entity Framework, niente Dapper.
 
 ```
-Domain          StockDay, WarehouseCode, Sku, Subject, AnalysisWindow, TimeSeries, Finding, Contribution, MagnitudeScore
-Application     Porte (IInventoryRepository, IChangeDetector, IRootCauseAnalyzer, IInsightNarrator, IReportWriter)
-                Detector, ContributionAnalyzer, FindingRanker, FindingConsolidator, AnalystService (orchestratore)
-Infrastructure  DbInventoryRepository (ADO.NET su DbProviderFactory), CsvInventoryRepository,
-                ClaudeInsightNarrator, report HTML/Markdown/JSON, generatore di dati demo
-Cli             Composition root
+Domain          StockDay, Finding, AnalysisWindow, ...        (analisi)
+                DatabaseCatalog, TableCandidate, SourceMapping, DiscoveryReport   (discovery)
+                MonitorDefinition, MonitorRun                                     (monitoraggio)
+Application     Porte: IInventoryRepository, ISourceRegistry/ISourceDatabase, IDiscoveryStore, IMonitorStore,
+                       IChangeDetector, IRootCauseAnalyzer, IInsightNarrator, ISchemaAdvisor
+                Detector, AnalystService, DatabaseDiscoveryAgent (+ classificatori, proposer, validator),
+                MonitoringService
+Infrastructure  SqlServerSourceDatabase (catalogo, profilazione, InventoryQueryBuilder T-SQL),
+                SqlDiscoveryStore / SqlMonitorStore + StoreSchemaInstaller (schema nugolo),
+                Claude (narratore e revisore), report HTML/MD/JSON, CSV, dati demo
+Web (MVC)       Controller (Home, Discovery, Monitors, Runs), viste Razor tipizzate, MonitoringWorker
+Cli             demo / analyze / ask / discover / seed-demo
 ```
 
-Per aggiungere un controllo basta scrivere un nuovo `IChangeDetector` e registrarlo in `Program.cs`, senza toccare
-il resto (principio Open/Closed). Il repository riceve una `DbProviderFactory`: in produzione SQL Server, nei test SQLite.
+**Senza reflection nel nostro codice**
+- Composition root esplicita (`CompositionRoot`): ogni servizio e ogni controller è creato con `new` in una factory. `AddControllersAsServices` trova i controller già registrati e non li attiva via reflection.
+- I form si leggono da `IFormCollection` con conversioni esplicite (`FormReader`, `MappingForm`), senza model binding su proprietà.
+- Le viste sono tipizzate: niente `ViewBag`/`dynamic`, route values con `RouteValueDictionary`.
+- Il JSON usa un `JsonSerializerContext` generato a compile-time. Gli enum persistiti hanno codici espliciti (`DomainCodes`, `StoreCodes`) e non passano da `Enum.ToString`/`Parse`.
+- Limite dichiarato: il framework ASP.NET Core MVC (routing delle action, Razor, logging) e l'SDK Anthropic usano reflection al loro interno. Non è evitabile restando su MVC.
 
-## Uso
+Per aggiungere un controllo basta scrivere un nuovo `IChangeDetector` e registrarlo in `CompositionRoot`.
+
+### Configurazione (`src/NugoloMag.Web/appsettings.json`)
+
+```json
+{
+  "ConnectionStrings": { "NugoloStore": "Server=...;Database=NugoloMag;..." },
+  "Sources": { "Gestionale": "Server=...;Database=Gestionale;...;ApplicationIntent=ReadOnly" },
+  "Monitoring": { "TimeZone": "Europe/Rome", "PollSeconds": 60 },
+  "Claude": { "Model": "claude-opus-5" }
+}
+```
+
+- `NugoloStore` è il database dell'app. Schema e tabelle `nugolo.*` si creano da soli all'avvio.
+- `Sources` elenca uno o più gestionali, letti in sola lettura.
+- Con la variabile d'ambiente `ANTHROPIC_API_KEY` si attivano la sintesi e la revisione di Claude.
+
+### Avvio
+
+```bash
+dotnet run --project src/NugoloMag.Web
+```
+
+Per provarlo senza un gestionale reale:
+
+```bash
+docker run -d -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Nugolo#2026!' -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest
+dotnet run --project src/NugoloMag.Analyst.Cli -- seed-demo --master "Server=localhost;User ID=sa;Password=Nugolo#2026!;TrustServerCertificate=true"
+# poi in appsettings: Sources:Gestionale → Database=GestionaleDemo
+```
+
+`GestionaleDemo` imita un gestionale italiano. Contiene `MovMag` (movimenti con causali CAR/VEN/INV/INI), `Articoli`, `Magazzini`, `SaldiMagazzino` (solo saldo corrente) e alcune tabelle che non c'entrano (`OrdiniRighe`, `ListiniPrezzi`, `Clienti`...) per mettere alla prova l'agente.
+
+## Riga di comando
 
 Richiede .NET 8.
 
@@ -83,7 +153,10 @@ Un report di esempio è in [`docs/esempio/`](docs/esempio/).
 
 ```bash
 dotnet test
+# integrazione su SQL Server reale: analisi del DB → attivazione → esecuzione → report salvato
+NUGOLO_TEST_SQLSERVER="Server=localhost;User ID=sa;Password=...;TrustServerCertificate=true" dotnet test
 ```
 
 I test coprono ogni detector (anche l'assenza di falsi positivi su dati stabili e stagionali), la root cause,
 un end-to-end sui dati demo che deve ritrovare tutte le anomalie iniettate e il repository ADO.NET su SQLite.
+Coprono anche classificatori, proposta di mapping, escape della query, pianificazione e il flusso completo su SQL Server.

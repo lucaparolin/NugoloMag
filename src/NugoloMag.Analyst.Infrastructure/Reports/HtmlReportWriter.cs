@@ -24,7 +24,7 @@ public sealed class HtmlReportWriter : IReportWriter
             h2{font-size:17px;margin:28px 0 10px}
             .f{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
             .f h3{font-size:15px;margin:0 0 6px}.tags{display:flex;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--muted);margin-bottom:8px}
-            .tag{border:1px solid var(--line);border-radius:999px;padding:1px 8px}.sev-High{color:var(--hi);border-color:var(--hi)}.sev-Medium{color:var(--med);border-color:var(--med)}.sev-Low{color:var(--lo)}
+            .tag{border:1px solid var(--line);border-radius:999px;padding:1px 8px}.sev-high{color:var(--hi);border-color:var(--hi)}.sev-medium{color:var(--med);border-color:var(--med)}.sev-low{color:var(--lo)}
             .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}@media(max-width:640px){.grid{grid-template-columns:1fr}}
             svg{width:100%;height:auto;display:block}ul{margin:0;padding-left:18px;font-size:13px}
             table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right}th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
@@ -61,7 +61,7 @@ public sealed class HtmlReportWriter : IReportWriter
         foreach (var (f, i) in report.Findings.Select((f, i) => (f, i + 1)))
         {
             sb.Append($"""<section class="f"><h3>{i}. {Enc(f.Headline)}</h3><div class="tags">""");
-            sb.Append($"""<span class="tag sev-{f.Severity}">{PriorityLabel(f.Severity)}</span><span class="tag">{Enc(MetricLabels.Italian(f.Kind))}</span>""");
+            sb.Append($"""<span class="tag sev-{f.Severity.Code()}">{MetricLabels.Italian(f.Severity)}</span><span class="tag">{Enc(MetricLabels.Italian(f.Kind))}</span>""");
             sb.Append($"""<span class="tag">magnitudo {f.Magnitude:0}/100</span><span class="tag">{Enc(f.Subject.ToString())}</span></div><div class="grid">""");
 
             sb.Append("<div>");
@@ -113,8 +113,6 @@ public sealed class HtmlReportWriter : IReportWriter
 
     private static string Num(double v, FindingKind kind) =>
         kind == FindingKind.MixDrift ? v.ToString("P1", Inv) : MetricLabels.Number(v);
-
-    private static string PriorityLabel(Severity s) => s switch { Severity.High => "priorità alta", Severity.Medium => "priorità media", _ => "priorità bassa" };
 
     private static string Enc(string s) => WebUtility.HtmlEncode(s);
 }

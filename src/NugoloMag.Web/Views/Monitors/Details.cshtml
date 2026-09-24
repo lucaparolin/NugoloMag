@@ -1,0 +1,51 @@
+@model MonitorDetailsViewModel
+@{
+    var m = Model.Monitor;
+}
+<p class="crumbs"><a href="/">Dashboard</a> › @m.Name</p>
+<h1>@m.Name @if (m.IsActive) { <span class="badge big ok">attivo</span> } else { <span class="badge big muted">in pausa</span> }</h1>
+<p class="lead">
+    Sorgente <b>@m.SourceName</b> · ogni giorno alle @m.RunAt.ToString("HH:mm") · baseline @m.BaselineDays giorni, periodo recente @m.RecentDays giorni ·
+    prossima esecuzione @Display.Time(m.NextRunAt, Model.Zone) · <a href="/Discovery/Review/@m.DiscoveryId">analisi del database #@m.DiscoveryId</a>
+</p>
+
+<div class="actions">
+    <form method="post" action="/Monitors/RunNow/@m.Id">@Html.AntiForgeryToken()<button type="submit">Esegui ora</button></form>
+    @if (m.IsActive)
+    {
+        <form method="post" action="/Monitors/Pause/@m.Id">@Html.AntiForgeryToken()<button type="submit" class="secondary">Metti in pausa</button></form>
+    }
+    else
+    {
+        <form method="post" action="/Monitors/Resume/@m.Id">@Html.AntiForgeryToken()<button type="submit" class="secondary">Riattiva</button></form>
+    }
+</div>
+<p class="muted small">"Esegui ora" mette il monitor in coda: parte entro il prossimo ciclo del servizio (circa un minuto).</p>
+
+<h2>Esecuzioni</h2>
+@if (Model.Runs.Count == 0)
+{
+    <p class="muted">Nessuna esecuzione ancora.</p>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Giorno analizzato</th><th>Avvio</th><th>Stato</th><th class="num">Righe</th><th class="num">Cambiamenti</th><th class="num">Alta priorità</th></tr></thead>
+            <tbody>
+            @foreach (var run in Model.Runs)
+            {
+                var (css, text) = Display.Run(run.Status);
+                <tr>
+                    <td><a href="/Runs/Details/@run.Id">@run.AsOf.ToString("dd/MM/yyyy")</a></td>
+                    <td>@Display.Time(run.StartedAt, Model.Zone)</td>
+                    <td><span class="badge @css">@text</span> @if (run.Error is { } e) { <span class="muted small">@e</span> }</td>
+                    <td class="num">@Display.Number(run.RowsAnalyzed)</td>
+                    <td class="num">@run.FindingsCount</td>
+                    <td class="num">@if (run.HighCount > 0) { <span class="badge fail">@run.HighCount</span> } else { <span>0</span> }</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

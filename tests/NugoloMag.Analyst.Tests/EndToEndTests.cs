@@ -13,10 +13,10 @@ namespace NugoloMag.Analyst.Tests;
 
 public class EndToEndTests
 {
-    private static AnalystService CreateService(Application.Abstractions.IInventoryRepository repository)
+    private static AnalystService CreateService()
     {
         var s = new DetectionSettings();
-        return new AnalystService(repository,
+        return new AnalystService(
             [new DataFreshnessDetector(s), new StockIntegrityDetector(s), new PointAnomalyDetector(s),
              new TrendReversalDetector(s), new ItemLifecycleDetector(s), new MixDriftDetector(s)],
             new ContributionAnalyzer(), new FindingRanker(s), new FindingConsolidator(), new TemplateInsightNarrator(), TimeProvider.System);
@@ -26,7 +26,7 @@ public class EndToEndTests
     public async Task All_injected_demo_anomalies_are_found()
     {
         var rows = new SyntheticInventoryGenerator().Generate(AsOf, days: 42);
-        var report = await CreateService(new InMemoryInventoryRepository(rows)).AnalyzeAsync(Window);
+        var report = await CreateService().AnalyzeAsync(new InMemoryInventoryRepository(rows), Window);
 
         bool Has(FindingKind kind, string subjectPrefix) =>
             report.Findings.Any(f => f.Kind == kind && f.Subject.ToString().StartsWith(subjectPrefix));

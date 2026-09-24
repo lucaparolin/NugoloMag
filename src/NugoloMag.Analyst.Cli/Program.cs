@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using NugoloMag.Analyst.Application;
 using NugoloMag.Analyst.Application.Abstractions;
 using NugoloMag.Analyst.Application.Detection;
+using NugoloMag.Analyst.Application.Discovery;
 using NugoloMag.Analyst.Application.Narration;
 using NugoloMag.Analyst.Application.RootCause;
 using NugoloMag.Analyst.Domain;
@@ -11,6 +12,7 @@ using NugoloMag.Analyst.Infrastructure.Claude;
 using NugoloMag.Analyst.Infrastructure.Data;
 using NugoloMag.Analyst.Infrastructure.Demo;
 using NugoloMag.Analyst.Infrastructure.Reports;
+using NugoloMag.Analyst.Infrastructure.SqlServer;
 
 var options = CliOptions.Parse(args);
 if (options.Command is null or "help")
@@ -21,6 +23,30 @@ if (options.Command is null or "help")
 
 try
 {
+    if (options.Command == "seed-demo")
+    {
+        var master = options.Get("master") ?? throw new ArgumentException("Specificare --master \"<stringa di connessione a SQL Server>\".");
+        var seedAsOf = options.Get("asof") is { } sa ? DateOnly.ParseExact(sa, "yyyy-MM-dd", CultureInfo.InvariantCulture) : DateOnly.FromDateTime(DateTime.Today);
+        await new DemoErpSeeder(master).SeedAsync(seedAsOf);
+        Console.WriteLine($"Database GestionaleDemo creato con movimenti fino al {seedAsOf:dd/MM/yyyy}.");
+        return 0;
+    }
+
+    if (options.Command == "discover")
+    {
+        var connection = options.Get("connection") ?? throw new ArgumentException("Specificare --connection \"...\".");
+        var agent = new DatabaseDiscoveryAgent(new SourceValidator(), new NoSchemaAdvisor(), TimeProvider.System);
+        var discovery = await agent.AnalyzeAsync(new SqlServerSourceDatabase("cli", connection));
+        foreach (var step in discovery.Steps)
+        {
+            Console.WriteLine($"[{step.Status}] {step.Title} ({step.Seconds:0.0}s)");
+            foreach (var line in step.Details) Console.WriteLine($"    {line}");
+        }
+        Console.WriteLine($"Esito: {discovery.Readiness}");
+        if (options.Has("show-query") && discovery.SourceQuery is { } q) Console.WriteLine(q);
+        return discovery.Readiness == NugoloMag.Analyst.Domain.Discovery.Readiness.Blocked ? 1 : 0;
+    }
+
     var asOf = options.Get("asof") is { } a ? DateOnly.ParseExact(a, "yyyy-MM-dd", CultureInfo.InvariantCulture) : DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
     var window = new AnalysisWindow(asOf, options.GetInt("baseline", 28), options.GetInt("recent", 7));
     var outDir = options.Get("out") ?? "report";
@@ -43,7 +69,6 @@ try
     var settings = new DetectionSettings();
     var narrator = CreateNarrator(options);
     var analyst = new AnalystService(
-        repository,
         [
             new DataFreshnessDetector(settings),
             new StockIntegrityDetector(settings),
@@ -58,7 +83,7 @@ try
         narrator,
         TimeProvider.System);
 
-    var report = await analyst.AnalyzeAsync(window);
+    var report = await analyst.AnalyzeAsync(repository, window);
 
     if (options.Command == "ask")
     {
@@ -116,6 +141,8 @@ internal sealed class CliOptions
           nugolomag analyze (--csv file | --connection "..." [--query-file q.sql]) [--asof yyyy-MM-dd]
                             [--baseline 28] [--recent 7] [--out dir] [--no-llm] [--model id]
           nugolomag ask "domanda" (--csv file | --connection "...") [--asof yyyy-MM-dd]
+          nugolomag discover --connection "..." [--show-query]     analisi del database (agente)
+          nugolomag seed-demo --master "..." [--asof yyyy-MM-dd]   crea il database GestionaleDemo
 
         Con ANTHROPIC_API_KEY impostata la sintesi è scritta da Claude; altrimenti da un template deterministico.
         Exit code 2 se ci sono finding ad alta priorità (utile per alert da job schedulati).

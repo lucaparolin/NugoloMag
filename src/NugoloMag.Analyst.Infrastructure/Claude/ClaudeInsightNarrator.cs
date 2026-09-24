@@ -3,6 +3,7 @@ using Anthropic.Models.Beta.Messages;
 using NugoloMag.Analyst.Application.Abstractions;
 using NugoloMag.Analyst.Domain;
 using NugoloMag.Analyst.Infrastructure.Reports;
+using NugoloMag.Analyst.Infrastructure.Serialization;
 
 namespace NugoloMag.Analyst.Infrastructure.Claude;
 
@@ -42,7 +43,7 @@ public sealed class ClaudeInsightNarrator(AnthropicClient client, IInsightNarrat
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var text = await fallback.NarrateAsync(report, ct);
-            return $"{text}\n(Sintesi automatica: Claude non disponibile — {ex.GetType().Name})";
+            return $"{text}\n(Sintesi automatica: Claude non disponibile — {ex.Message})";
         }
     }
 
@@ -51,7 +52,7 @@ public sealed class ClaudeInsightNarrator(AnthropicClient client, IInsightNarrat
 
     private async Task<string> AskAsync(AnalysisReport report, string instruction, CancellationToken ct)
     {
-        var json = JsonReportWriter.Serialize(ReportDto.From(report, includeNarrative: false));
+        var json = NugoloJson.Serialize(ReportDocument.From(report, includeNarrative: false));
 
         var response = await client.Beta.Messages.Create(new MessageCreateParams
         {

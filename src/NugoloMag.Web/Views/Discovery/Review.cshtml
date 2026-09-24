@@ -1,0 +1,199 @@
+@model DiscoveryReviewViewModel
+@{
+    var r = Model.Report;
+    var f = Model.Form;
+    var (readyCss, readyText) = Display.Readiness(r.Readiness);
+    var movColumns = Model.ColumnsOf(f.MovTable);
+    var snapColumns = Model.ColumnsOf(f.SnapTable);
+    var itemColumns = Model.ColumnsOf(f.ItemsTable);
+    var codeIndex = 0;
+}
+
+<p class="crumbs"><a href="/">Dashboard</a> › Analisi #@r.Id</p>
+<h1>Analisi del database @r.Database <span class="badge big @readyCss">@readyText</span></h1>
+<p class="lead">
+    Sorgente <b>@r.SourceName</b> · @r.TableCount tabelle, @Display.Number(r.ColumnCount) colonne · @r.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+</p>
+<p class="muted">
+    @switch (r.Readiness)
+    {
+        case Readiness.Ready: <text>L'agente ha trovato una configurazione coerente e l'ha provata sui dati reali. Controlla il riepilogo e attiva il monitoraggio.</text> break;
+        case Readiness.NeedsReview: <text>La proposta funziona ma ci sono punti da verificare (segnalati con !). Correggi il mapping se serve, poi attiva.</text> break;
+        default: <text>L'agente non è riuscito a ottenere dati validi. Correggi il mapping qui sotto e riprova.</text> break;
+    }
+</p>
+
+<div class="grid-2">
+<section>
+    <h2>Il ragionamento dell'agente</h2>
+    <ol class="trace">
+        @foreach (var step in r.Steps)
+        {
+            var (css, icon) = Display.Step(step.Status);
+            <li class="@css">
+                <div class="trace-head"><span class="dot">@icon</span> <b>@step.Title</b> @if (step.Seconds > 0) { <span class="muted">@step.Seconds.ToString("0.0")s</span> }</div>
+                <ul>
+                    @foreach (var d in step.Details) { <li>@d</li> }
+                </ul>
+            </li>
+        }
+    </ol>
+
+    @if (r.AdvisorNotes is { } notes)
+    {
+        <h2>Secondo parere di Claude</h2>
+        <div class="card prose">@notes</div>
+    }
+</section>
+
+<section>
+    <h2>Mapping proposto</h2>
+    @if (Model.Error is { } error) { <p class="alert fail">@error</p> }
+    <form method="post" action="/Discovery/Review/@r.Id" id="mapping" class="card" data-busy="Verifica in corso…">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="action" value="validate">
+
+        <fieldset>
+            <legend>Movimenti di magazzino</legend>
+            <label>Tabella @FormControls.TableSelect("mov.table", Model.TablesFor(TableRole.Movements, f.MovTable), f.MovTable)</label>
+            <div class="row">
+                <label>Data @FormControls.ColumnSelect("mov.date", movColumns, f.MovDate, false)</label>
+                <label>Articolo @FormControls.ColumnSelect("mov.item", movColumns, f.MovItem, false)</label>
+                <label>Magazzino @FormControls.ColumnSelect("mov.warehouse", movColumns, f.MovWarehouse, true, "(magazzino unico)")</label>
+            </div>
+            <label>Magazzino unico (se non c'è la colonna) <input name="defaultWarehouse" value="@f.DefaultWarehouse" maxlength="20"></label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Verso del movimento</legend>
+            <div class="choices">
+                <label><input type="radio" name="mov.direction" value="@MappingForm.DirectionType" checked="@(f.Direction == MappingForm.DirectionType)"> Causale</label>
+                <label><input type="radio" name="mov.direction" value="@MappingForm.DirectionSigned" checked="@(f.Direction == MappingForm.DirectionSigned)"> Segno della quantità</label>
+                <label><input type="radio" name="mov.direction" value="@MappingForm.DirectionSeparate" checked="@(f.Direction == MappingForm.DirectionSeparate)"> Colonne carico/scarico</label>
+            </div>
+            <div class="row">
+                <label>Quantità @FormControls.ColumnSelect("mov.quantity", movColumns, f.MovQuantity, true)</label>
+                <label>Causale @FormControls.ColumnSelect("mov.type", movColumns, f.MovType, true)</label>
+            </div>
+            <div class="row">
+                <label>Qtà caricata @FormControls.ColumnSelect("mov.inbound", movColumns, f.MovInbound, true)</label>
+                <label>Qtà scaricata @FormControls.ColumnSelect("mov.outbound", movColumns, f.MovOutbound, true)</label>
+            </div>
+            @if (f.Codes.Count > 0)
+            {
+                <div class="table-wrap">
+                    <table class="codes">
+                        <thead><tr><th>Causale</th><th class="num">Righe</th><th>Carico</th><th>Scarico</th><th>Rettifica</th><th>Escludi</th></tr></thead>
+                        <tbody>
+                        @foreach (var (code, target) in f.Codes.OrderByDescending(c => Model.RowsFor(c.Key)))
+                        {
+                            var i = codeIndex++;
+                            <tr>
+                                <td><code>@code</code><input type="hidden" name="codev.@i" value="@code"></td>
+                                <td class="num">@Display.Number(Model.RowsFor(code))</td>
+                                <td><input type="radio" name="code.@i" value="in" checked="@(target == "in")" aria-label="@code carico"></td>
+                                <td><input type="radio" name="code.@i" value="out" checked="@(target == "out")" aria-label="@code scarico"></td>
+                                <td><input type="radio" name="code.@i" value="adj" checked="@(target == "adj")" aria-label="@code rettifica"></td>
+                                <td><input type="radio" name="code.@i" value="none" checked="@(target == "none")" aria-label="@code escludi"></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </fieldset>
+
+        <fieldset>
+            <legend><label class="check"><input type="checkbox" name="snap.enabled" checked="@f.UseSnapshot"> Giacenza da saldi storici giornalieri</label></legend>
+            <p class="muted small">Se disattivo, la giacenza si ricostruisce sommando i movimenti dal saldo iniziale.</p>
+            <label>Tabella @FormControls.TableSelect("snap.table", Model.TablesFor(TableRole.StockSnapshot, f.SnapTable), f.SnapTable)</label>
+            <div class="row">
+                <label>Data @FormControls.ColumnSelect("snap.date", snapColumns, f.SnapDate, true)</label>
+                <label>Articolo @FormControls.ColumnSelect("snap.item", snapColumns, f.SnapItem, true)</label>
+                <label>Magazzino @FormControls.ColumnSelect("snap.warehouse", snapColumns, f.SnapWarehouse, true)</label>
+                <label>Giacenza @FormControls.ColumnSelect("snap.onhand", snapColumns, f.SnapOnHand, true)</label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><label class="check"><input type="checkbox" name="items.enabled" checked="@f.UseItems"> Anagrafica articoli (categoria e costo)</label></legend>
+            <label>Tabella @FormControls.TableSelect("items.table", Model.TablesFor(TableRole.ItemMaster, f.ItemsTable), f.ItemsTable)</label>
+            <div class="row">
+                <label>Codice @FormControls.ColumnSelect("items.key", itemColumns, f.ItemsKey, true)</label>
+                <label>Categoria @FormControls.ColumnSelect("items.category", itemColumns, f.ItemsCategory, true)</label>
+                <label>Costo @FormControls.ColumnSelect("items.cost", itemColumns, f.ItemsCost, true)</label>
+            </div>
+        </fieldset>
+
+        <button type="submit">Riprova con queste impostazioni</button>
+    </form>
+</section>
+</div>
+
+@if (r.Validation is { } v)
+{
+    <h2>Prova sui dati reali (@v.From.ToString("dd/MM") – @v.To.ToString("dd/MM/yyyy"))</h2>
+    <div class="kpis">
+        <div class="kpi"><b>@Display.Number(v.Rows)</b><span>posizioni giornaliere</span></div>
+        <div class="kpi"><b>@v.Warehouses</b><span>magazzini</span></div>
+        <div class="kpi"><b>@Display.Number(v.Items)</b><span>articoli</span></div>
+    </div>
+    <ul class="checks">
+        @foreach (var c in v.Checks)
+        {
+            var (css, icon) = Display.Step(c.Status);
+            <li class="@css"><span class="dot">@icon</span> <b>@c.Name</b> — @c.Detail</li>
+        }
+    </ul>
+    @if (v.Preview.Count > 0)
+    {
+        <details>
+            <summary>Anteprima dei dati (@v.Preview.Count righe)</summary>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Data</th><th>Mag.</th><th>Articolo</th><th>Categoria</th><th class="num">Giacenza</th><th class="num">Entrate</th><th class="num">Uscite</th><th class="num">Rettifiche</th><th class="num">Costo</th></tr></thead>
+                    <tbody>
+                    @foreach (var p in v.Preview)
+                    {
+                        <tr><td>@p.Date.ToString("dd/MM")</td><td>@p.Warehouse.Value</td><td>@p.Sku.Value</td><td>@p.Category</td>
+                            <td class="num">@Display.Number(p.OnHand)</td><td class="num">@Display.Number(p.Inbound)</td><td class="num">@Display.Number(p.Outbound)</td>
+                            <td class="num">@Display.Number(p.Adjustment)</td><td class="num">@Display.Number(p.UnitCost)</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+}
+
+@if (r.SourceQuery is { } query)
+{
+    <details>
+        <summary>Query generata (sola lettura)</summary>
+        <pre class="sql">@query</pre>
+    </details>
+}
+
+<section class="card step" id="activate">
+    <div class="step-num">2</div>
+    <div>
+        <h2>Attiva il monitoraggio</h2>
+        @if (Model.ActivationError is { } activationError) { <p class="alert fail">@activationError</p> }
+        @if (r.Readiness == Readiness.Blocked || r.SourceQuery is null)
+        {
+            <p class="muted">Disponibile quando la prova sui dati reali va a buon fine.</p>
+        }
+        else
+        {
+            <p class="muted">Ogni giorno all'orario indicato si analizza la giornata precedente contro le settimane di baseline. La prima esecuzione parte subito.</p>
+            <form method="post" action="/Discovery/Activate/@r.Id" class="row" data-busy="Attivazione…">
+                @Html.AntiForgeryToken()
+                <label>Nome <input name="name" required maxlength="100" value="Magazzini @r.Database"></label>
+                <label>Orario <input name="runAt" type="time" value="06:00" required></label>
+                <label>Giorni di baseline <input name="baselineDays" type="number" min="7" max="365" value="28" required></label>
+                <label>Giorni recenti <input name="recentDays" type="number" min="1" max="60" value="7" required></label>
+                <button type="submit">Attiva monitoraggio</button>
+            </form>
+        }
+    </div>
+</section>

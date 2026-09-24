@@ -1,0 +1,82 @@
+@model DashboardViewModel
+
+<h1>Monitoraggio magazzini</h1>
+<p class="lead">Prima l'agente studia il database del gestionale, poi il monitoraggio osserva ogni giorno cosa cambia.</p>
+
+<section class="card step">
+    <div class="step-num">1</div>
+    <div>
+        <h2>Analizza un database</h2>
+        <p class="muted">L'agente legge lo schema, riconosce movimenti, saldi e anagrafiche, interpreta le causali e prova la query sui dati reali.
+            Sola lettura: nel gestionale non viene scritto nulla.@(Model.ClaudeEnabled ? " Claude rivede la proposta." : "")</p>
+        @if (Model.Sources.Count == 0)
+        {
+            <p class="alert fail">Nessuna sorgente configurata: aggiungere una stringa di connessione nella sezione <code>Sources</code> di appsettings.</p>
+        }
+        else
+        {
+            <form method="post" action="/Discovery/Start" class="inline" data-busy="Analisi in corso…">
+                @Html.AntiForgeryToken()
+                <label>Sorgente
+                    <select name="source">
+                        @foreach (var s in Model.Sources)
+                        {
+                            <option value="@s">@s</option>
+                        }
+                    </select>
+                </label>
+                <button type="submit">Avvia analisi</button>
+            </form>
+        }
+    </div>
+</section>
+
+<h2>Monitoraggi</h2>
+@if (Model.Monitors.Count == 0)
+{
+    <p class="muted">Nessun monitoraggio attivo. Si attiva dalla pagina di un'analisi conclusa.</p>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Nome</th><th>Sorgente</th><th>Stato</th><th>Ultima esecuzione</th><th class="num">Cambiamenti</th><th class="num">Alta priorità</th></tr></thead>
+            <tbody>
+            @foreach (var row in Model.Monitors)
+            {
+                <tr>
+                    <td><a href="/Monitors/Details/@row.Monitor.Id">@row.Monitor.Name</a></td>
+                    <td>@row.Monitor.SourceName</td>
+                    <td>@if (row.Monitor.IsActive) { <span class="badge ok">attivo</span> } else { <span class="badge muted">in pausa</span> }</td>
+                    <td>
+                        @if (row.LastRun is { } run)
+                        {
+                            var (css, text) = Display.Run(run.Status);
+                            <a href="/Runs/Details/@run.Id">@run.AsOf.ToString("dd/MM/yyyy")</a> <span class="badge @css">@text</span>
+                        }
+                        else { <span class="muted">in attesa</span> }
+                    </td>
+                    <td class="num">@(row.LastRun?.FindingsCount.ToString() ?? "—")</td>
+                    <td class="num">@if (row.LastRun is { HighCount: > 0 } r) { <span class="badge fail">@r.HighCount</span> } else { <span>@(row.LastRun is null ? "—" : "0")</span> }</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Analisi del database recenti</h2>
+@if (Model.Discoveries.Count == 0)
+{
+    <p class="muted">Nessuna analisi eseguita.</p>
+}
+else
+{
+    <ul class="list">
+        @foreach (var d in Model.Discoveries)
+        {
+            var (css, text) = Display.Readiness(d.Readiness);
+            <li><a href="/Discovery/Review/@d.Id">#@d.Id @d.Database</a> <span class="muted">@d.SourceName · @d.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span> <span class="badge @css">@text</span></li>
+        }
+    </ul>
+}

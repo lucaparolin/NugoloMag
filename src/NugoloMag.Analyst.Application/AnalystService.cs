@@ -8,7 +8,6 @@ namespace NugoloMag.Analyst.Application;
 /// Ogni passo dipende solo da astrazioni, così sorgenti dati e narratori sono intercambiabili.
 /// </summary>
 public sealed class AnalystService(
-    IInventoryRepository repository,
     IEnumerable<IChangeDetector> detectors,
     IRootCauseAnalyzer rootCause,
     FindingRanker ranker,
@@ -16,9 +15,9 @@ public sealed class AnalystService(
     IInsightNarrator narrator,
     TimeProvider clock)
 {
-    public async Task<AnalysisReport> AnalyzeAsync(AnalysisWindow window, CancellationToken ct = default)
+    public async Task<AnalysisReport> AnalyzeAsync(IInventoryRepository source, AnalysisWindow window, CancellationToken ct = default)
     {
-        var rows = await repository.LoadAsync(window.LoadFrom, window.AsOf, ct);
+        var rows = await source.LoadAsync(window.LoadFrom, window.AsOf, ct);
         var data = new InventoryDataset(rows);
 
         var explained = ranker.Rank(detectors.SelectMany(d => d.Detect(data, window)))
