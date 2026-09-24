@@ -1,7 +1,9 @@
 using System.Data;
+using System.Globalization;
 using Microsoft.Data.SqlClient;
 using NugoloMag.Analyst.Application.Abstractions;
 using NugoloMag.Analyst.Application.Discovery;
+using NugoloMag.Analyst.Domain.Assistant;
 using NugoloMag.Analyst.Domain.Discovery;
 using NugoloMag.Analyst.Infrastructure.Data;
 
@@ -145,6 +147,51 @@ public sealed class SqlServerSourceDatabase(string name, string connectionString
     }
 
     public string BuildInventoryQuery(SourceMapping mapping) => InventoryQueryBuilder.Build(mapping);
+
+    /// <summary>
+    /// Esecuzione in sola lettura: dentro una transazione che viene sempre annullata, con timeout breve
+    /// e lettura limitata a <paramref name="maxRows"/> righe. I valori sono convertiti in testo senza reflection.
+    /// </summary>
+    public async Task<QueryResult> QueryAsync(string sql, int maxRows, CancellationToken ct = default)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        await using var connection = await OpenAsync(ct);
+        await using var tx = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        try
+        {
+            await using var cmd = new SqlCommand(sql, connection, tx) { CommandTimeout = 60 };
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            var columns = Enumerable.Range(0, reader.FieldCount).Select(i => reader.GetName(i) is { Length: > 0 } n ? n : $"col{i + 1}").ToList();
+            var rows = new List<IReadOnlyList<string>>();
+            var truncated = false;
+            while (await reader.ReadAsync(ct))
+            {
+                if (rows.Count == maxRows) { truncated = true; cmd.Cancel(); break; }
+                var row = new string[reader.FieldCount];
+                for (var i = 0; i < reader.FieldCount; i++) row[i] = Text(reader.GetValue(i));
+                rows.Add(row);
+            }
+            return new QueryResult(columns, rows, truncated, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds);
+        }
+        finally
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+        }
+    }
+
+    private static string Text(object value) => value switch
+    {
+        DBNull => "NULL",
+        DateTime d => d.TimeOfDay == TimeSpan.Zero ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : d.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+        DateTimeOffset o => o.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture),
+        byte[] bytes => $"<binario {bytes.Length} byte>",
+        decimal m => m.ToString("0.####", CultureInfo.InvariantCulture),
+        double f => f.ToString("0.####", CultureInfo.InvariantCulture),
+        float f => f.ToString("0.####", CultureInfo.InvariantCulture),
+        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? ""
+    };
 
     public IInventoryRepository Inventory(string query) => new DbInventoryRepository(SqlClientFactory.Instance, connectionString, query);
 

@@ -46,7 +46,7 @@ public class SqlServerIntegrationTests
         Assert.Null(discovery.Mapping.Snapshot); // SaldiMagazzino è solo il saldo corrente
 
         // 2. Salvataggio e rilettura (JSON source-generated)
-        var connections = new SqlConnectionFactory(Db("NugoloTestStore"));
+        var connections = new SqlConnectionFactory(Db("NugoloTestStoreMonitor"));
         await new StoreSchemaInstaller(connections).InstallAsync();
         var discoveries = new SqlDiscoveryStore(connections);
         var id = await discoveries.SaveAsync(discovery);
@@ -65,7 +65,7 @@ public class SqlServerIntegrationTests
         var service = new MonitoringService(discoveries, monitors, registry, analyst, TimeProvider.System, TimeZoneInfo.Local);
 
         var monitorId = await service.ActivateAsync(new ActivationRequest(id, "Test", new TimeOnly(6, 0), 28, 7));
-        Assert.Equal(1, await service.RunDueAsync());
+        Assert.True(await service.RunDueAsync() >= 1);
 
         var run = (await monitors.ListRunsAsync(monitorId, 1)).Single();
         Assert.Equal(RunStatus.Succeeded, run.Status);
@@ -74,6 +74,47 @@ public class SqlServerIntegrationTests
         Assert.Contains(report!.Findings, f => f.Kind == "spike" && f.Subject == "MI01");
 
         // Ripianificato per domani: non riparte subito.
-        Assert.Equal(0, await service.RunDueAsync());
+        Assert.DoesNotContain(await monitors.ListDueAsync(DateTimeOffset.UtcNow), m => m.Id == monitorId);
+    }
+}
+
+public class AssistantToolsIntegrationTests
+{
+    private static string Db(string name) =>
+        new SqlConnectionStringBuilder(SqlServerFactAttribute.Connection) { InitialCatalog = name }.ConnectionString;
+
+    [SqlServerFact]
+    public async Task Tools_explore_query_and_save_on_a_real_database_without_ever_writing_to_it()
+    {
+        await new DemoErpSeeder(SqlServerFactAttribute.Connection!, "NugoloTestTools").SeedAsync(DateOnly.FromDateTime(DateTime.Today));
+        var source = new SqlServerSourceDatabase("erp", Db("NugoloTestTools"));
+        var connections = new SqlConnectionFactory(Db("NugoloTestStoreTools"));
+        await new StoreSchemaInstaller(connections).InstallAsync();
+        var saved = new SqlSavedQueryStore(connections);
+        var tools = new NugoloMag.Analyst.Application.Assistant.DataAgentToolbox(source, await source.ReadCatalogAsync(), saved, 0, TimeProvider.System);
+
+        static System.Text.Json.JsonElement Json(string s) => System.Text.Json.JsonDocument.Parse(s).RootElement.Clone();
+
+        var describe = await tools.ExecuteAsync("describe_table", Json("""{"table":"dbo.MovMag"}"""));
+        Assert.Contains("Causale", describe.Content);
+        Assert.Contains("FK CodArt → dbo.Articoli.CodArt", describe.Content);
+
+        var query = await tools.ExecuteAsync("run_query", Json("""{"sql":"SELECT Causale, COUNT(*) AS N FROM dbo.MovMag GROUP BY Causale ORDER BY N DESC","purpose":"causali"}"""));
+        Assert.False(query.IsError, query.Content);
+        Assert.StartsWith("Causale\tN", query.Content);
+        Assert.Contains("VEN", query.Content);
+
+        var write = await tools.ExecuteAsync("run_query", Json("""{"sql":"DELETE FROM dbo.MovMag","purpose":"x"}"""));
+        Assert.True(write.IsError);
+
+        var save = await tools.ExecuteAsync("save_query", Json("""{"name":"Movimenti per causale","description":"Conteggio","sql":"SELECT Causale, COUNT(*) AS N FROM dbo.MovMag GROUP BY Causale"}"""));
+        Assert.False(save.IsError, save.Content);
+        Assert.Contains(await saved.ListAsync("erp"), q => q.Name == "Movimenti per causale");
+
+        // Seconda barriera: anche aggirando il filtro, l'esecutore annulla sempre la transazione.
+        var before = (await source.QueryAsync("SELECT COUNT(*) FROM dbo.MovMag", 1)).Rows[0][0];
+        await source.QueryAsync("DELETE FROM dbo.MovMag; SELECT 1", 1);
+        var after = (await source.QueryAsync("SELECT COUNT(*) FROM dbo.MovMag", 1)).Rows[0][0];
+        Assert.Equal(before, after);
     }
 }

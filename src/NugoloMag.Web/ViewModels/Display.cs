@@ -43,6 +43,50 @@ public static class Display
     public static string Number(long value) => value.ToString("#,0", It);
     public static string Percent(double ratio) => ratio.ToString("P0", It);
 
+    public static string ToolLabel(string? tool) => tool switch
+    {
+        "list_tables" => "Elenco tabelle",
+        "describe_table" => "Struttura tabella",
+        "sample_rows" => "Righe di esempio",
+        "run_query" => "Query",
+        "save_query" => "Query salvata",
+        "list_saved_queries" => "Query salvate",
+        _ => tool ?? "Strumento"
+    };
+
+    /// <summary>Una riga che dice cosa ha fatto lo strumento: lo scopo della query, la tabella, il filtro.</summary>
+    public static string ToolSummary(Analyst.Domain.Assistant.ConversationEntry e)
+    {
+        var detail = Property(e.ToolInput, "purpose") ?? Property(e.ToolInput, "name") ?? Property(e.ToolInput, "table") ?? Property(e.ToolInput, "filter") ?? "";
+        var outcome = e.ToolResult?.Split('\n').LastOrDefault() ?? "";
+        return e.IsError ? $"{detail} — {outcome}" : $"{detail}{(e.ToolName == "run_query" ? " — " + outcome : "")}";
+    }
+
+    /// <summary>Il risultato tabellare di uno strumento (TSV + riga finale di riepilogo), se lo è.</summary>
+    public static (string[] Header, List<string[]> Rows, string Footer)? ToolTable(Analyst.Domain.Assistant.ConversationEntry e)
+    {
+        if (e.IsError || e.ToolName is not ("run_query" or "sample_rows") || e.ToolResult is null) return null;
+        var lines = e.ToolResult.Split('\n');
+        if (lines.Length < 2) return null;
+        var header = lines[0].Split('\t');
+        var rows = lines[1..^1].Select(l => l.Split('\t')).Where(r => r.Length == header.Length).ToList();
+        return (header, rows, lines[^1]);
+    }
+
+    public static string? ToolSql(Analyst.Domain.Assistant.ConversationEntry e) => Property(e.ToolInput, "sql");
+
+    public static string Clip(string? text, int max) => text is null ? "" : text.Length <= max ? text : text[..max] + "\n…";
+
+    private static string? Property(string? json, string name)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+               && doc.RootElement.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+            ? v.GetString()
+            : null;
+    }
+
     /// <summary>Sparkline SVG della serie, con il periodo recente evidenziato. Contiene solo numeri: sicura da emettere raw.</summary>
     public static string Sparkline(IReadOnlyList<PointDocument> points, string recentFrom)
     {

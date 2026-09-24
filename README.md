@@ -61,6 +61,25 @@ L'esito è **Pronto**, **Da rivedere** o **Bloccato**. Il monitoraggio si può a
 - Il mapping modificato dall'utente accetta solo tabelle e colonne presenti nel catalogo analizzato. Gli identificatori sono sempre quotati e le causali passano con escape.
 - Si consiglia un login SQL con solo `db_datareader` sul gestionale.
 
+## Assistente dati conversazionale
+
+Pagina **Assistente**: si parla con un agente che conosce il database del gestionale. L'agente:
+- **esplora** lo schema quanto serve, partendo dall'analisi del database già fatta dall'agente di discovery (tabelle giuste, causali);
+- **chiede chiarimenti** quando la domanda è ambigua in modo che cambierebbe il risultato ("per venduto intendo causale VEN, ultimi 30 giorni: va bene?"), proponendo sempre un'interpretazione predefinita;
+- **scrive ed esegue da solo** le query T-SQL; se una query fallisce ne legge l'errore e la corregge;
+- **salva** le query utili nella pagina **Query salvate**, da dove si rieseguono sui dati aggiornati (si possono anche scrivere a mano).
+
+Ogni passo compare nella conversazione: lo scopo, il testo SQL e il risultato.
+
+Gli strumenti dell'agente sono `list_tables`, `describe_table`, `sample_rows`, `run_query`, `save_query` e `list_saved_queries`. Sono definiti in `DataAgentToolbox`, indipendente dal fornitore dell'LLM; il ciclo di chiamate a Claude è in `ClaudeDataAgent`.
+
+**Sola lettura, con tre barriere indipendenti**
+1. `ReadOnlySqlGuard` accetta una sola istruzione `SELECT`/`WITH`. Prima di controllare neutralizza commenti, stringhe e identificatori quotati, poi rifiuta INSERT, UPDATE, DELETE, EXEC, INTO, SET, DECLARE, OPENROWSET, `xp_`/`sp_` e simili.
+2. L'esecutore lavora dentro una transazione **sempre annullata**, con timeout di 60 secondi e un limite di righe (200 per l'agente, 1.000 in pagina). Un test d'integrazione verifica che perfino un `DELETE` che aggira il filtro non lasci traccia.
+3. Resta consigliato un login SQL con solo `db_datareader`.
+
+Richiede `ANTHROPIC_API_KEY`. Senza chiave la pagina spiega come attivarla, e il resto dell'app funziona comunque.
+
 ## Architettura
 
 Si parte dal modello di dominio, secondo i principi SOLID. L'accesso ai dati è in ADO.NET puro: niente Entity Framework, niente Dapper.
@@ -72,11 +91,12 @@ Domain          StockDay, Finding, AnalysisWindow, ...        (analisi)
 Application     Porte: IInventoryRepository, ISourceRegistry/ISourceDatabase, IDiscoveryStore, IMonitorStore,
                        IChangeDetector, IRootCauseAnalyzer, IInsightNarrator, ISchemaAdvisor
                 Detector, AnalystService, DatabaseDiscoveryAgent (+ classificatori, proposer, validator),
-                MonitoringService
+                MonitoringService, ConversationService, DataAgentToolbox, ReadOnlySqlGuard
 Infrastructure  SqlServerSourceDatabase (catalogo, profilazione, InventoryQueryBuilder T-SQL),
                 SqlDiscoveryStore / SqlMonitorStore + StoreSchemaInstaller (schema nugolo),
-                Claude (narratore e revisore), report HTML/MD/JSON, CSV, dati demo
-Web (MVC)       Controller (Home, Discovery, Monitors, Runs), viste Razor tipizzate, MonitoringWorker
+                Claude (narratore, revisore, ClaudeDataAgent), store conversazioni e query salvate,
+                report HTML/MD/JSON, CSV, dati demo
+Web (MVC)       Controller (Home, Discovery, Monitors, Runs, Assistant, Queries), viste Razor tipizzate, MonitoringWorker
 Cli             demo / analyze / ask / discover / seed-demo
 ```
 

@@ -1,0 +1,66 @@
+@model ChatViewModel
+@using NugoloMag.Analyst.Domain.Assistant
+@{
+    string[] examples =
+    [
+        "Quali sono i 10 articoli più venduti nell'ultimo mese, per magazzino?",
+        "Ci sono articoli con giacenza ma senza uscite da più di 30 giorni?",
+        "Confronta le uscite di questa settimana con la media delle 4 settimane precedenti, per famiglia.",
+        "Quanto valgono le rettifiche inventariali dell'ultimo mese e su quali articoli?"
+    ];
+}
+<p class="crumbs"><a href="/Assistant">Assistente</a> › @Model.Conversation.Title</p>
+<h1>@Model.Conversation.Title</h1>
+<p class="lead">Sorgente <b>@Model.Conversation.SourceName</b> · le query sono in sola lettura · <a href="/Queries">query salvate</a></p>
+
+<div class="chat">
+    @if (Model.Entries.Count == 0)
+    {
+        <div class="card muted">
+            <p class="flush">Esempi di domande:</p>
+            <div class="chips">
+                @foreach (var e in examples) { <button type="button" class="chip" data-fill="@e">@e</button> }
+            </div>
+        </div>
+    }
+    @foreach (var e in Model.Entries)
+    {
+        switch (e.Kind)
+        {
+            case EntryKind.User:
+                <div class="bubble user">@e.Text</div>
+                break;
+            case EntryKind.Assistant:
+                <div class="bubble assistant @(e.IsError ? "error" : "")">@e.Text</div>
+                break;
+            default:
+                <details class="tool @(e.IsError ? "error" : "")">
+                    <summary><span class="tool-name">@Display.ToolLabel(e.ToolName)</span> @Display.ToolSummary(e)</summary>
+                    @if (Display.ToolSql(e) is { } sql) { <pre class="sql">@sql</pre> }
+                    @if (Display.ToolTable(e) is { } table)
+                    {
+                        <div class="table-wrap result">
+                            <table>
+                                <thead><tr>@foreach (var h in table.Header) { <th>@h</th> }</tr></thead>
+                                <tbody>@foreach (var row in table.Rows.Take(50)) { <tr>@foreach (var v in row) { <td>@v</td> }</tr> }</tbody>
+                            </table>
+                            <p class="muted small">@table.Footer@(table.Rows.Count > 50 ? " · mostrate le prime 50" : "")</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <pre class="result">@Display.Clip(e.ToolResult, 4000)</pre>
+                    }
+                </details>
+                break;
+        }
+    }
+    <span id="fine"></span>
+</div>
+
+@if (Model.Error is { } error) { <p class="alert fail">@error</p> }
+<form method="post" action="/Assistant/Chat/@Model.Conversation.Id" class="composer" data-busy="L'assistente sta lavorando… (può richiedere un minuto)">
+    @Html.AntiForgeryToken()
+    <textarea name="message" rows="3" maxlength="4000" required placeholder="Fai una domanda o rispondi all'assistente…" @(Model.AgentAvailable ? "" : "disabled")>@Model.Draft</textarea>
+    <button type="submit" @(Model.AgentAvailable ? "" : "disabled")>Invia</button>
+</form>

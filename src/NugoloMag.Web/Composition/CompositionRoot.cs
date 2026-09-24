@@ -2,6 +2,7 @@ using Anthropic;
 using Microsoft.AspNetCore.Mvc;
 using NugoloMag.Analyst.Application;
 using NugoloMag.Analyst.Application.Abstractions;
+using NugoloMag.Analyst.Application.Assistant;
 using NugoloMag.Analyst.Application.Detection;
 using NugoloMag.Analyst.Application.Discovery;
 using NugoloMag.Analyst.Application.Monitoring;
@@ -41,17 +42,21 @@ public static class CompositionRoot
         services.AddSingleton(sp => new SqlMonitorStore(sp.GetRequiredService<SqlConnectionFactory>()));
         services.AddSingleton<IMonitorStore>(sp => sp.GetRequiredService<SqlMonitorStore>());
         services.AddSingleton<IRunReportQuery>(sp => sp.GetRequiredService<SqlMonitorStore>());
+        services.AddSingleton<IConversationStore>(sp => new SqlConversationStore(sp.GetRequiredService<SqlConnectionFactory>()));
+        services.AddSingleton<ISavedQueryStore>(sp => new SqlSavedQueryStore(sp.GetRequiredService<SqlConnectionFactory>()));
 
         if (claudeEnabled)
         {
             services.AddSingleton(new AnthropicClient());
             services.AddSingleton<IInsightNarrator>(sp => new ClaudeInsightNarrator(sp.GetRequiredService<AnthropicClient>(), new TemplateInsightNarrator(), claudeModel));
             services.AddSingleton<ISchemaAdvisor>(sp => new ClaudeSchemaAdvisor(sp.GetRequiredService<AnthropicClient>(), claudeModel));
+            services.AddSingleton<IDataAgent>(sp => new ClaudeDataAgent(sp.GetRequiredService<AnthropicClient>(), claudeModel));
         }
         else
         {
             services.AddSingleton<IInsightNarrator>(new TemplateInsightNarrator());
             services.AddSingleton<ISchemaAdvisor>(new NoSchemaAdvisor());
+            services.AddSingleton<IDataAgent>(new UnavailableDataAgent());
         }
 
         // Applicazione
@@ -82,6 +87,13 @@ public static class CompositionRoot
             sp.GetRequiredService<AnalystService>(),
             sp.GetRequiredService<TimeProvider>(),
             zone));
+        services.AddSingleton(sp => new ConversationService(
+            sp.GetRequiredService<IConversationStore>(),
+            sp.GetRequiredService<ISavedQueryStore>(),
+            sp.GetRequiredService<IDiscoveryStore>(),
+            sp.GetRequiredService<ISourceRegistry>(),
+            sp.GetRequiredService<IDataAgent>(),
+            sp.GetRequiredService<TimeProvider>()));
         services.AddHostedService(sp => new MonitoringWorker(
             sp.GetRequiredService<MonitoringService>(),
             sp.GetRequiredService<ILoggerFactory>().CreateLogger("NugoloMag.Monitoring"),
@@ -97,6 +109,11 @@ public static class CompositionRoot
             sp.GetRequiredService<IMonitorStore>(), sp.GetRequiredService<MonitoringService>(), zone));
         services.AddTransient(sp => new RunsController(
             sp.GetRequiredService<IMonitorStore>(), sp.GetRequiredService<IRunReportQuery>()));
+
+        services.AddTransient(sp => new AssistantController(
+            sp.GetRequiredService<ConversationService>(), sp.GetRequiredService<IConversationStore>(), sp.GetRequiredService<ISourceRegistry>()));
+        services.AddTransient(sp => new QueriesController(
+            sp.GetRequiredService<ISavedQueryStore>(), sp.GetRequiredService<ISourceRegistry>(), sp.GetRequiredService<TimeProvider>()));
 
         services
             .AddControllersWithViews(o => o.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()))

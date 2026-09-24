@@ -19,6 +19,9 @@ public interface ISourceDatabase
     Task<IReadOnlyList<CodeFrequency>> TopValuesAsync(TableName table, string column, string? quantityColumn, CancellationToken ct = default);
     string BuildInventoryQuery(SourceMapping mapping);
     IInventoryRepository Inventory(string query);
+
+    /// <summary>Esegue una query già verificata da <c>ReadOnlySqlGuard</c>, in una transazione sempre annullata.</summary>
+    Task<NugoloMag.Analyst.Domain.Assistant.QueryResult> QueryAsync(string sql, int maxRows, CancellationToken ct = default);
 }
 
 /// <summary>Revisione facoltativa della proposta da parte di un LLM. Non modifica il mapping, lo commenta.</summary>

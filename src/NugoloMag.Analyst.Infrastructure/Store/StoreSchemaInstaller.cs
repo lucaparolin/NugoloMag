@@ -62,6 +62,38 @@ public sealed class StoreSchemaInstaller(SqlConnectionFactory connections)
             Metric    varchar(20)   NULL,
             Headline  nvarchar(500) NOT NULL,
             CONSTRAINT PK_Finding PRIMARY KEY (RunId, [Rank]));
+
+        IF OBJECT_ID(N'nugolo.Conversation', N'U') IS NULL
+        CREATE TABLE nugolo.Conversation (
+            ConversationId bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_Conversation PRIMARY KEY,
+            SourceName     nvarchar(100)     NOT NULL,
+            Title          nvarchar(200)     NOT NULL,
+            CreatedAt      datetimeoffset(0) NOT NULL,
+            UpdatedAt      datetimeoffset(0) NOT NULL);
+
+        IF OBJECT_ID(N'nugolo.ConversationEntry', N'U') IS NULL
+        CREATE TABLE nugolo.ConversationEntry (
+            ConversationId bigint            NOT NULL CONSTRAINT FK_Entry_Conversation REFERENCES nugolo.Conversation(ConversationId),
+            Seq            int               NOT NULL,
+            Kind           varchar(20)       NOT NULL,
+            Text           nvarchar(max)     NULL,
+            ToolName       varchar(50)       NULL,
+            ToolInput      nvarchar(max)     NULL,
+            ToolResult     nvarchar(max)     NULL,
+            IsError        bit               NOT NULL,
+            CreatedAt      datetimeoffset(0) NOT NULL,
+            CONSTRAINT PK_ConversationEntry PRIMARY KEY (ConversationId, Seq));
+
+        IF OBJECT_ID(N'nugolo.SavedQuery', N'U') IS NULL
+        CREATE TABLE nugolo.SavedQuery (
+            QueryId        bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_SavedQuery PRIMARY KEY,
+            SourceName     nvarchar(100)     NOT NULL,
+            Name           nvarchar(200)     NOT NULL,
+            Description    nvarchar(1000)    NOT NULL,
+            SqlText        nvarchar(max)     NOT NULL,
+            CreatedBy      varchar(20)       NOT NULL,
+            ConversationId bigint            NULL,
+            CreatedAt      datetimeoffset(0) NOT NULL);
         """;
 
     public async Task InstallAsync(CancellationToken ct = default)

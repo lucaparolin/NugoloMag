@@ -14,3 +14,11 @@ document.querySelectorAll('form[data-busy]').forEach(function (form) {
         if (button) { button.disabled = true; button.textContent = form.getAttribute('data-busy'); }
     });
 });
+
+// Domande di esempio: riempiono la casella del messaggio.
+document.querySelectorAll('[data-fill]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+        var box = document.querySelector('.composer textarea');
+        if (box) { box.value = chip.getAttribute('data-fill'); box.focus(); }
+    });
+});

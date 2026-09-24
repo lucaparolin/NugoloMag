@@ -1,0 +1,31 @@
+@model QueryDetailsViewModel
+@{ var q = Model.Query; }
+<p class="crumbs"><a href="/Queries">Query salvate</a> › @q.Name</p>
+<h1>@q.Name</h1>
+<p class="lead">@q.Description</p>
+<p class="muted small">Sorgente @q.SourceName · creata da @q.CreatedBy il @q.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+    @if (q.ConversationId is { } cid) { <text>· <a href="/Assistant/Chat/@cid">conversazione di origine</a></text> }</p>
+
+<pre class="sql">@q.Sql</pre>
+
+<div class="actions">
+    <form method="post" action="/Queries/Run/@q.Id" data-busy="Esecuzione…">@Html.AntiForgeryToken()<button type="submit">Esegui</button></form>
+    <form method="post" action="/Queries/Delete/@q.Id" onsubmit="return confirm('Eliminare la query?')">@Html.AntiForgeryToken()<button type="submit" class="secondary">Elimina</button></form>
+</div>
+
+@if (Model.Error is { } error) { <p class="alert fail">@error</p> }
+@if (Model.Result is { } r)
+{
+    <p class="muted small">@r.Rows.Count righe@(r.Truncated ? " (limite raggiunto)" : "") in @r.Seconds.ToString("0.00") s</p>
+    <div class="table-wrap">
+        <table>
+            <thead><tr>@foreach (var c in r.Columns) { <th>@c</th> }</tr></thead>
+            <tbody>
+            @foreach (var row in r.Rows)
+            {
+                <tr>@foreach (var v in row) { <td>@v</td> }</tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

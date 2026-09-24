@@ -37,3 +37,25 @@ public sealed record DiscoveryReviewViewModel(
 public sealed record MonitorDetailsViewModel(MonitorDefinition Monitor, IReadOnlyList<MonitorRun> Runs, TimeZoneInfo Zone);
 
 public sealed record RunDetailsViewModel(MonitorDefinition Monitor, MonitorRun Run, ReportDocument? Report);
+
+public sealed record AssistantIndexViewModel(
+    IReadOnlyList<NugoloMag.Analyst.Domain.Assistant.Conversation> Conversations,
+    IReadOnlyList<string> Sources,
+    bool AgentAvailable);
+
+public sealed record ChatViewModel(
+    NugoloMag.Analyst.Domain.Assistant.Conversation Conversation,
+    IReadOnlyList<NugoloMag.Analyst.Domain.Assistant.ConversationEntry> Entries,
+    bool AgentAvailable,
+    string? Error = null,
+    string? Draft = null);
+
+public sealed record QueriesIndexViewModel(
+    IReadOnlyList<NugoloMag.Analyst.Domain.Assistant.SavedQuery> Queries,
+    IReadOnlyList<string> Sources,
+    string? Error = null);
+
+public sealed record QueryDetailsViewModel(
+    NugoloMag.Analyst.Domain.Assistant.SavedQuery Query,
+    NugoloMag.Analyst.Domain.Assistant.QueryResult? Result = null,
+    string? Error = null);

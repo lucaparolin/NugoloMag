@@ -41,7 +41,7 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
         cmd.Parameters.Add(Param("@recent", SqlDbType.Int, m.RecentDays));
         cmd.Parameters.Add(Param("@active", SqlDbType.Bit, m.IsActive));
         cmd.Parameters.Add(Param("@created", SqlDbType.DateTimeOffset, m.CreatedAt));
-        cmd.Parameters.Add(Param("@next", SqlDbType.DateTimeOffset, m.NextRunAt));
+        cmd.Parameters.Add(Param("@next", SqlDbType.DateTimeOffset, FloorToSecond(m.NextRunAt)));
         return (long)(await cmd.ExecuteScalarAsync(ct))!;
     }
 
@@ -62,7 +62,7 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "UPDATE nugolo.Monitor SET IsActive = @active, NextRunAt = @next WHERE MonitorId = @id;";
         cmd.Parameters.Add(Param("@active", SqlDbType.Bit, isActive));
-        cmd.Parameters.Add(Param("@next", SqlDbType.DateTimeOffset, nextRunAt));
+        cmd.Parameters.Add(Param("@next", SqlDbType.DateTimeOffset, FloorToSecond(nextRunAt)));
         cmd.Parameters.Add(Param("@id", SqlDbType.BigInt, id));
         await cmd.ExecuteNonQueryAsync(ct);
     }
@@ -219,6 +219,13 @@ public sealed class SqlMonitorStore(SqlConnectionFactory connections) : IMonitor
         }
         return result;
     }
+
+    /// <summary>
+    /// Le colonne sono datetimeoffset(0): SQL Server arrotonda al secondo più vicino, e un "esegui ora" salvato
+    /// con 14:45:30.7 diventerebbe 14:45:31, cioè non ancora scaduto. Si tronca per difetto.
+    /// </summary>
+    private static DateTimeOffset? FloorToSecond(DateTimeOffset? value) =>
+        value is { } v ? new DateTimeOffset(v.Ticks - v.Ticks % TimeSpan.TicksPerSecond, v.Offset) : null;
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
 }

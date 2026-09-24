@@ -71,3 +71,21 @@ pre.sql { background: var(--card); border: 1px solid var(--line); border-radius:
 .bar { display: inline-block; height: 6px; background: var(--accent); border-radius: 3px; vertical-align: middle; }
 code { font-size: 12.5px; }
 .trace, .checks, .prose { overflow-wrap: anywhere; }
+.top nav { display: flex; gap: 14px; flex-wrap: wrap; }
+.flush { margin-top: 0; }
+.chat { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.bubble { max-width: 85%; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+.bubble.assistant { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.bubble.error { border-color: var(--fail); color: var(--fail); }
+details.tool { align-self: stretch; margin: 0; font-size: 13px; border-left: 2px solid var(--line); padding-left: 10px; }
+details.tool summary { font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
+details.tool.error summary { color: var(--fail); }
+.tool-name { font-weight: 600; color: var(--ink); }
+pre.result { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-x: auto; font-size: 12px; max-height: 320px; }
+.composer { display: flex; gap: 8px; align-items: flex-end; position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
+textarea { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; resize: vertical; }
+textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: var(--bg); color: var(--ink); border: 1px solid var(--line); font-weight: 400; font-size: 13px; text-align: left; }
+.table-wrap.result { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-height: 360px; overflow: auto; } .table-wrap.result p { margin: 6px 0 0; }

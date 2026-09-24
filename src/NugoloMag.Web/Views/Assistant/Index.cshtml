@@ -1,0 +1,38 @@
+@model AssistantIndexViewModel
+
+<h1>Assistente dati</h1>
+<p class="lead">Fai domande sui magazzini in linguaggio naturale. L'assistente esplora il database, ti chiede chiarimenti quando serve,
+    scrive ed esegue le query (solo lettura) e salva quelle utili.</p>
+
+@if (!Model.AgentAvailable)
+{
+    <p class="alert fail">L'assistente richiede Claude: impostare la variabile d'ambiente <code>ANTHROPIC_API_KEY</code> e riavviare l'applicazione.</p>
+}
+
+<section class="card">
+    <h2 class="flush">Nuova conversazione</h2>
+    <form method="post" action="/Assistant/Start" class="inline">
+        @Html.AntiForgeryToken()
+        <label>Sorgente
+            <select name="source">
+                @foreach (var s in Model.Sources) { <option value="@s">@s</option> }
+            </select>
+        </label>
+        <button type="submit">Inizia</button>
+    </form>
+</section>
+
+<h2>Conversazioni</h2>
+@if (Model.Conversations.Count == 0)
+{
+    <p class="muted">Nessuna conversazione.</p>
+}
+else
+{
+    <ul class="list">
+        @foreach (var c in Model.Conversations)
+        {
+            <li><a href="/Assistant/Chat/@c.Id">@c.Title</a> <span class="muted small">@c.SourceName · @c.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span></li>
+        }
+    </ul>
+}

@@ -1,0 +1,44 @@
+@model QueriesIndexViewModel
+
+<h1>Query salvate</h1>
+<p class="lead">Analisi create dall'assistente o scritte a mano. Si rieseguono in sola lettura sui dati aggiornati.</p>
+@if (Model.Error is { } error) { <p class="alert fail">@error</p> }
+
+@if (Model.Queries.Count == 0)
+{
+    <p class="muted">Nessuna query salvata. Chiedi all'assistente di salvare un'analisi utile, oppure scrivine una qui sotto.</p>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Nome</th><th>Descrizione</th><th>Sorgente</th><th>Creata da</th><th>Data</th></tr></thead>
+            <tbody>
+            @foreach (var q in Model.Queries)
+            {
+                <tr>
+                    <td><a href="/Queries/Details/@q.Id">@q.Name</a></td>
+                    <td class="muted">@q.Description</td>
+                    <td>@q.SourceName</td>
+                    <td>@q.CreatedBy @if (q.ConversationId is { } cid) { <a class="small" href="/Assistant/Chat/@cid">(conversazione)</a> }</td>
+                    <td>@q.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<details>
+    <summary>Scrivi una query a mano</summary>
+    <form method="post" action="/Queries/Create" class="card">
+        @Html.AntiForgeryToken()
+        <div class="row">
+            <label>Sorgente <select name="source">@foreach (var s in Model.Sources) { <option value="@s">@s</option> }</select></label>
+            <label>Nome <input name="name" required maxlength="200"></label>
+        </div>
+        <label>Descrizione <input name="description" maxlength="1000"></label>
+        <label>SQL (solo SELECT) <textarea name="sql" rows="6" required class="mono"></textarea></label>
+        <button type="submit">Prova e salva</button>
+    </form>
+</details>
