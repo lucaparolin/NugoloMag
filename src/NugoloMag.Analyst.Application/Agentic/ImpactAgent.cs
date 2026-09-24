@@ -55,6 +55,12 @@ public sealed class ImpactAgent(AgenticSettings settings)
             // Un picco di uscite non è una perdita: è valore movimentato, che conta per la copertura, non come esposizione.
             list.Add(new("Valore movimentato fuori norma (a costo)", moved * 0.8, moved * 1.2, "€ movimentati", "unità oltre l'atteso × costo unitario"));
         }
+        else if (seed.Signature.Contains(":adjustment", StringComparison.Ordinal) && m.GetValueOrDefault("observed") >= m.GetValueOrDefault("baseline")
+                 && m.GetValueOrDefault("value_exposed") is > 0 and var corrected)
+        {
+            // Rettifica positiva (merce "ritrovata"): problema di accuratezza, non una perdita economica.
+            list.Add(new("Valore rettificato in aumento", corrected * 0.8, corrected * 1.2, "€ rettificati", "giacenza di sistema corretta verso l'alto: da verificare"));
+        }
         else if (m.GetValueOrDefault("value_exposed") is > 0 and var exposed)
         {
             list.Add(new("Valore coinvolto", exposed * 0.8, exposed * 1.2, "€", "unità fuori norma × costo unitario"));

@@ -23,7 +23,11 @@
 else
 {
     <p class="muted small">Briefing #@b.Id · sorgente @b.SourceName · giornata analizzata @b.AsOf.ToString("dd/MM/yyyy") · generato @b.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
-    @if (b.Narrative is { } narrative) { <div class="card accent prose">@narrative</div> }
+    @if (b.Narrative is { } narrative)
+    {
+        <div class="card accent prose">@narrative</div>
+        <p class="muted small">Sintesi scritta dal modello linguistico: i fatti di riferimento sono nelle sezioni strutturate qui sotto, calcolate dagli agenti.</p>
+    }
 
     <h2>1. Sintesi</h2>
     <ul>@foreach (var s in b.ExecutiveSummary) { <li>@s</li> }</ul>

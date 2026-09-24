@@ -57,6 +57,16 @@ informazione ed esclude esplicitamente un problema degli operatori.
 - Le chiavi non stanno nella configurazione: `ApiKeyEnvironmentVariable` indica il nome della variabile d'ambiente da cui leggerla.
 - Tutti gli agenti LLM (sintesi del report, revisore dello schema, assistente dati, orchestratore, briefing) dipendono solo da `IChatModel`.
 
+**Ollama in pratica**
+```bash
+docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+docker exec ollama ollama pull qwen2.5:7b      # o llama3.1:8b, mistral-nemo: modelli con tool calling
+```
+- Provato davvero con **qwen2.5 3B su CPU** (4 core): funziona con tool calling nativo, ma ogni risposta richiede da 30 secondi a qualche minuto (circa 7 token/s).
+- Per un uso quotidiano serve una GPU, oppure un modello 7B–14B su una macchina adeguata. In alternativa si può usare un fornitore cloud cambiando solo la sezione `Llm`.
+- Qualità: con un modello da 3B i numeri restano corretti (vengono dagli agenti), ma la sintesi del briefing può contenere imprecisioni qualitative. Per questo sotto ogni risposta c'è il verdetto deterministico degli agenti e il briefing strutturato. Per l'uso reale consiglio almeno 7B.
+- Il sistema resta utilizzabile anche con modelli lenti: rilevamento, indagine, impatto e raccomandazioni sono deterministici e immediati; l'LLM serve per il linguaggio e per le domande libere.
+
 ## Pagine dell'applicazione
 
 | Pagina | Cosa fa |

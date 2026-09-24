@@ -215,7 +215,8 @@ public sealed class WarehouseOrchestrator(
         {
             context.AppendLine($"Indagine preliminare sul segnale principale ({seed.Title}):");
             foreach (var h in investigation.Hypotheses)
-                context.AppendLine($"- ipotesi '{h.Statement}': {h.Status}, confidenza {h.Confidence}; a favore: {string.Join("; ", h.Supporting)}; contro: {string.Join("; ", h.Contradicting)}; mancano: {string.Join("; ", h.Missing)}");
+                context.AppendLine($"- ipotesi '{h.Statement}': {Status(h.Status)}, confidenza {Confidence(h.Confidence)}; a favore: {string.Join("; ", h.Supporting)}; contro: {string.Join("; ", h.Contradicting)}; mancano: {string.Join("; ", h.Missing)}");
+            context.AppendLine("Le ipotesi SCARTATE non sono cause: non presentarle come tali. Le ipotesi DA VERIFICARE non sono dimostrate.");
             if (investigation.Counterfactual is { } cf) context.AppendLine($"- controfattuale: {cf}");
             foreach (var i in impact) context.AppendLine($"- impatto: {i.Measure} {i.Low:#,0}–{i.High:#,0} {i.Unit} ({i.Basis})");
             foreach (var r in recommendations) context.AppendLine($"- raccomandazione: {r.Action} — {r.ExpectedResult} (approvazione {r.Approval}, rischio: {r.Downside})");
@@ -244,9 +245,30 @@ public sealed class WarehouseOrchestrator(
             trace.Add(new AgentTraceStep(AgentNames.Orchestrator, $"strumento {step.Call!.Name}", step.Outcome!.Content.Split('\n').LastOrDefault() ?? "", 0));
         trace.Add(new AgentTraceStep(AgentNames.Orchestrator, "risposta", $"{model!.Info.Provider}/{model.Info.Model}, {result.Steps.Count(s => s.Call is not null)} strumenti usati", 0));
 
-        return result.Completed ? result.FinalText
-            : TemplateAnswer(question, intent, findings, seed, investigation, impact, recommendations) + $"\n\n(Modello linguistico non conclusivo: {result.FinalText})";
+        if (!result.Completed)
+            return TemplateAnswer(question, intent, findings, seed, investigation, impact, recommendations) + $"\n\n(Modello linguistico non conclusivo: {result.FinalText})";
+
+        // Il testo dell'LLM è accompagnato dal verdetto deterministico degli agenti: ciò che è stabilito resta verificabile.
+        return investigation is null ? result.FinalText : result.FinalText.Trim() + "\n\n" + Verdict(investigation);
     }
+
+    private static string Verdict(InvestigationResult inv)
+    {
+        var sb = new StringBuilder("Verifica degli agenti (deterministica):");
+        foreach (var group in inv.Hypotheses.GroupBy(h => h.Status).OrderBy(g => g.Key))
+            sb.Append($"\n- {Status(group.Key)}: {string.Join("; ", group.Select(h => h.Statement))}");
+        return sb.ToString();
+    }
+
+    private static string Status(HypothesisStatus s) => s switch
+    {
+        HypothesisStatus.Confirmed => "CONFERMATA",
+        HypothesisStatus.Probable => "PROBABILE",
+        HypothesisStatus.Rejected => "SCARTATA",
+        _ => "DA VERIFICARE"
+    };
+
+    private static string Confidence(ConfidenceLevel c) => c switch { ConfidenceLevel.High => "alta", ConfidenceLevel.Medium => "media", _ => "bassa" };
 
     private static string TemplateAnswer(string question, QuestionIntent intent, IReadOnlyList<AgentFinding> findings, AgentFinding? seed,
         InvestigationResult? inv, IReadOnlyList<ImpactEstimate> impact, IReadOnlyList<Recommendation> recs)

@@ -143,6 +143,8 @@ public class OrchestratorTests(ITestOutputHelper output)
         var result = h.Investigations.Items.Single(i => i.Id == id);
 
         Assert.Contains("congestionata", result.Answer);
+        Assert.Contains("Verifica degli agenti", result.Answer);           // verdetto deterministico sempre visibile
+        Assert.Contains("SCARTATA", result.Answer);
         Assert.Contains(result.Trace, t => t.Action.Contains("richiesto dall'LLM"));
         Assert.Contains(model.Requests[0].Tools, t => t.Name == "run_query");         // SQL in sola lettura disponibile
         Assert.Contains("Indagine preliminare", model.Requests[0].Messages[0].Text);  // l'LLM parte dalle prove deterministiche

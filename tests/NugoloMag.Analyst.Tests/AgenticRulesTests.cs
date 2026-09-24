@@ -45,3 +45,24 @@ public class AgenticRulesTests
     public void Confidence_follows_independent_evidence(int support, int contra, int alternatives, ConfidenceLevel expected) =>
         Assert.Equal(expected, ConfidenceModel.Assess(support, contra, alternatives));
 }
+
+public class ImpactRulesTests
+{
+    private static AgentFinding Adjustment(double baseline, double observed) => new()
+    {
+        Agent = "inventory", Domain = OperationalDomain.Inventory, Signature = "inventory:drop:NA03:adjustment", Warehouse = "NA03",
+        Title = "t", Observation = "o", WhyItMatters = "w", Evidence = [], Baseline = "b", Deviation = "d", Scope = "s",
+        Confidence = ConfidenceLevel.High, Severity = new(1, 0.7, 0.6, 0.5, ConfidenceLevel.High), Intensity = 1,
+        Measures = new Dictionary<string, double> { ["baseline"] = baseline, ["observed"] = observed, ["value_exposed"] = 18000 }
+    };
+
+    private static readonly InvestigationResult None = new([], null, [], [], ConfidenceLevel.Low, [], [], [], null, null, []);
+
+    [Fact]
+    public void Only_negative_adjustments_count_as_money_at_risk()
+    {
+        var impact = new ImpactAgent(new AgenticSettings());
+        Assert.Contains(impact.Estimate(Adjustment(0, -600), None), i => i.Unit == "€");
+        Assert.DoesNotContain(impact.Estimate(Adjustment(0, 600), None), i => i.Unit == "€");
+    }
+}
