@@ -1,0 +1,359 @@
+{
+  "asOf": "2026-09-23",
+  "baseline": {
+    "from": "2026-08-20",
+    "to": "2026-09-16"
+  },
+  "recent": {
+    "from": "2026-09-17",
+    "to": "2026-09-23"
+  },
+  "warehouses": [
+    "MI01",
+    "NA03",
+    "RM02"
+  ],
+  "rowsAnalyzed": 4362,
+  "narrative": "Analisi al 23/09/2026 su 3 magazzini e 4.362 righe: 10 cambiamenti rilevanti (5 alta priorità, 3 media).\n\nDa guardare per primi:\n- [Crollo] Rettifiche inventariali MI01: -79 unità rispetto al normale del mercoledì (-81 contro -2 attesi) — principale causa: categoria Casa (101 % della variazione).\n- [Picco] Uscite MI01: +83% rispetto al normale del mercoledì (1.667 contro 912 attesi) — principale causa: categoria Elettronica (98 % della variazione).\n- [Picco] Uscite NA03: +79% rispetto al normale del mercoledì (1.700 contro 950,5 attesi) — principale causa: categoria Bevande (97 % della variazione).\n- [Cambio di mix] Mix delle uscite di NA03 cambiato (PSI 0.51): Bevande passa dal 22 % al 55 % — principale causa: categoria Bevande (63 % della variazione).\n- [Integrità giacenze] 8 squadrature di giacenza in NA03 (valore 43.173 €): la giacenza non torna con i movimenti.\n\nAttenzione: 2 problemi di qualità del dato; verificare prima di trarre conclusioni sui magazzini NA03.\n",
+  "findings": [
+    {
+      "rank": 1,
+      "kind": "Drop",
+      "kindLabel": "Crollo",
+      "severity": "High",
+      "magnitude": 100,
+      "subject": "MI01",
+      "metric": "Adjustment",
+      "headline": "Rettifiche inventariali MI01: -79 unità rispetto al normale del mercoledì (-81 contro -2 attesi)",
+      "baseline": -2,
+      "observed": -81,
+      "relativeChange": -39.5,
+      "evidence": {
+        "z-score robusto": "-79.0",
+        "rumore tipico (±)": "1",
+        "media baseline": "-0,86",
+        "articoli coinvolti": "MI-002"
+      },
+      "rootCauses": [
+        {
+          "dimension": "Categoria",
+          "member": "Casa",
+          "baseline": 0,
+          "current": -80,
+          "delta": -80,
+          "share": 1.013
+        },
+        {
+          "dimension": "Articolo",
+          "member": "MI-002 (Casa)",
+          "baseline": 0,
+          "current": -80,
+          "delta": -80,
+          "share": 1.013
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "kind": "Spike",
+      "kindLabel": "Picco",
+      "severity": "High",
+      "magnitude": 96.2,
+      "subject": "MI01",
+      "metric": "Outbound",
+      "headline": "Uscite MI01: +83% rispetto al normale del mercoledì (1.667 contro 912 attesi)",
+      "baseline": 912,
+      "observed": 1667,
+      "relativeChange": 0.8279,
+      "evidence": {
+        "z-score robusto": "19.6",
+        "rumore tipico (±)": "38,61",
+        "media baseline": "772,14",
+        "articoli coinvolti": "MI-038, MI-018, MI-028, MI-003, MI-013, MI-023, MI-033, MI-008"
+      },
+      "rootCauses": [
+        {
+          "dimension": "Categoria",
+          "member": "Elettronica",
+          "baseline": 192,
+          "current": 930,
+          "delta": 738,
+          "share": 0.977
+        },
+        {
+          "dimension": "Articolo",
+          "member": "MI-038 (Elettronica)",
+          "baseline": 35,
+          "current": 195,
+          "delta": 160,
+          "share": 0.212
+        },
+        {
+          "dimension": "Articolo",
+          "member": "MI-013 (Elettronica)",
+          "baseline": 26,
+          "current": 135,
+          "delta": 109,
+          "share": 0.144
+        },
+        {
+          "dimension": "Articolo",
+          "member": "MI-018 (Elettronica)",
+          "baseline": 29.5,
+          "current": 130,
+          "delta": 100.5,
+          "share": 0.133
+        },
+        {
+          "dimension": "Articolo",
+          "member": "MI-003 (Elettronica)",
+          "baseline": 30,
+          "current": 125,
+          "delta": 95,
+          "share": 0.126
+        },
+        {
+          "dimension": "Articolo",
+          "member": "MI-028 (Elettronica)",
+          "baseline": 29.5,
+          "current": 120,
+          "delta": 90.5,
+          "share": 0.12
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "kind": "Spike",
+      "kindLabel": "Picco",
+      "severity": "High",
+      "magnitude": 95.5,
+      "subject": "NA03",
+      "metric": "Outbound",
+      "headline": "Uscite NA03: +79% rispetto al normale del mercoledì (1.700 contro 950,5 attesi)",
+      "baseline": 950.5,
+      "observed": 1700,
+      "relativeChange": 0.7885,
+      "evidence": {
+        "z-score robusto": "18.7",
+        "rumore tipico (±)": "40,15",
+        "media baseline": "802,93"
+      },
+      "rootCauses": [
+        {
+          "dimension": "Categoria",
+          "member": "Bevande",
+          "baseline": 205,
+          "current": 935,
+          "delta": 730,
+          "share": 0.974
+        },
+        {
+          "dimension": "Articolo",
+          "member": "NA-NEW1 (Bevande)",
+          "baseline": 0,
+          "current": 120,
+          "delta": 120,
+          "share": 0.16
+        },
+        {
+          "dimension": "Articolo",
+          "member": "NA-NEW2 (Bevande)",
+          "baseline": 0,
+          "current": 120,
+          "delta": 120,
+          "share": 0.16
+        },
+        {
+          "dimension": "Articolo",
+          "member": "NA-NEW3 (Bevande)",
+          "baseline": 0,
+          "current": 120,
+          "delta": 120,
+          "share": 0.16
+        },
+        {
+          "dimension": "Articolo",
+          "member": "NA-NEW4 (Bevande)",
+          "baseline": 0,
+          "current": 120,
+          "delta": 120,
+          "share": 0.16
+        },
+        {
+          "dimension": "Articolo",
+          "member": "NA-NEW5 (Bevande)",
+          "baseline": 0,
+          "current": 120,
+          "delta": 120,
+          "share": 0.16
+        }
+      ]
+    },
+    {
+      "rank": 4,
+      "kind": "MixDrift",
+      "kindLabel": "Cambio di mix",
+      "severity": "High",
+      "magnitude": 92.3,
+      "subject": "NA03",
+      "metric": "Outbound",
+      "headline": "Mix delle uscite di NA03 cambiato (PSI 0.51): Bevande passa dal 22 % al 55 %",
+      "evidence": {
+        "PSI": "0.513"
+      },
+      "rootCauses": [
+        {
+          "dimension": "Categoria",
+          "member": "Bevande",
+          "baseline": 0.215,
+          "current": 0.554,
+          "delta": 0.339,
+          "share": 0.626
+        },
+        {
+          "dimension": "Categoria",
+          "member": "Casa",
+          "baseline": 0.219,
+          "current": 0.125,
+          "delta": -0.094,
+          "share": 0.103
+        },
+        {
+          "dimension": "Categoria",
+          "member": "Elettronica",
+          "baseline": 0.198,
+          "current": 0.113,
+          "delta": -0.085,
+          "share": 0.093
+        },
+        {
+          "dimension": "Categoria",
+          "member": "Cura persona",
+          "baseline": 0.195,
+          "current": 0.111,
+          "delta": -0.084,
+          "share": 0.092
+        },
+        {
+          "dimension": "Categoria",
+          "member": "Alimentari",
+          "baseline": 0.173,
+          "current": 0.097,
+          "delta": -0.076,
+          "share": 0.086
+        }
+      ]
+    },
+    {
+      "rank": 5,
+      "kind": "Integrity",
+      "kindLabel": "Integrità giacenze",
+      "severity": "High",
+      "magnitude": 74,
+      "subject": "NA03",
+      "metric": "OnHand",
+      "headline": "8 squadrature di giacenza in NA03 (valore 43.173 €): la giacenza non torna con i movimenti",
+      "evidence": {
+        "NA-002 22/09": "scarto -150 unità",
+        "NA-002 23/09": "scarto 150 unità",
+        "NA-001 22/09": "scarto -150 unità",
+        "NA-001 23/09": "scarto 150 unità",
+        "NA-003 22/09": "scarto -150 unità"
+      },
+      "rootCauses": []
+    },
+    {
+      "rank": 6,
+      "kind": "NewItem",
+      "kindLabel": "Nuovi articoli",
+      "severity": "Medium",
+      "magnitude": 56.1,
+      "subject": "NA03",
+      "headline": "6 nuovi articoli attivi in NA03 negli ultimi 7 giorni (43.3 % delle uscite)",
+      "evidence": {
+        "NA-NEW1 (Bevande)": "720 unità uscite",
+        "NA-NEW2 (Bevande)": "720 unità uscite",
+        "NA-NEW3 (Bevande)": "720 unità uscite",
+        "NA-NEW4 (Bevande)": "720 unità uscite",
+        "NA-NEW5 (Bevande)": "720 unità uscite"
+      },
+      "rootCauses": []
+    },
+    {
+      "rank": 7,
+      "kind": "Stockout",
+      "kindLabel": "Rottura di stock",
+      "severity": "Medium",
+      "magnitude": 54.8,
+      "subject": "RM02/RM-015",
+      "metric": "Outbound",
+      "headline": "Rottura di stock RM02/RM-015: giacenza 0, zero uscite negli ultimi 3 giorni (attese 138,5)",
+      "baseline": 138.5,
+      "observed": 0,
+      "relativeChange": -1,
+      "evidence": {
+        "categoria": "Alimentari",
+        "giorni con uscite in baseline": "86 %",
+        "uscita media giornaliera": "35,82",
+        "giacenza attuale": "0",
+        "articoli coinvolti": "RM-015"
+      },
+      "rootCauses": []
+    },
+    {
+      "rank": 8,
+      "kind": "StalledItem",
+      "kindLabel": "Articolo fermo",
+      "severity": "Medium",
+      "magnitude": 44.1,
+      "subject": "RM02/RM-040",
+      "metric": "Outbound",
+      "headline": "Articolo fermo RM02/RM-040: nessuna uscita da 3 giorni pur con 492 a stock (attese 138)",
+      "baseline": 138,
+      "observed": 0,
+      "relativeChange": -1,
+      "evidence": {
+        "categoria": "Alimentari",
+        "giorni con uscite in baseline": "86 %",
+        "uscita media giornaliera": "34,93",
+        "giacenza attuale": "492",
+        "articoli coinvolti": "RM-040"
+      },
+      "rootCauses": []
+    },
+    {
+      "rank": 9,
+      "kind": "Spike",
+      "kindLabel": "Picco",
+      "severity": "Low",
+      "magnitude": 38.2,
+      "subject": "RM02/RM-021",
+      "metric": "Outbound",
+      "headline": "Uscite RM02/RM-021: +30% rispetto al normale del mercoledì (46 contro 35,5 attesi)",
+      "baseline": 35.5,
+      "observed": 46,
+      "relativeChange": 0.2958,
+      "evidence": {
+        "z-score robusto": "5.0",
+        "rumore tipico (±)": "2,08",
+        "media baseline": "31,89"
+      },
+      "rootCauses": []
+    },
+    {
+      "rank": 10,
+      "kind": "Integrity",
+      "kindLabel": "Integrità giacenze",
+      "severity": "Low",
+      "magnitude": 30.1,
+      "subject": "NA03",
+      "metric": "OnHand",
+      "headline": "1 articoli con giacenza negativa in NA03 negli ultimi 7 giorni",
+      "evidence": {
+        "NA-003": "-10 il 22/09"
+      },
+      "rootCauses": []
+    }
+  ]
+}

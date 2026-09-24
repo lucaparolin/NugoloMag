@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{A464D981-0048-4019-8F8D-5B9D9828FC72}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugoloMag.Analyst.Application", "src\NugoloMag.Analyst.Application\NugoloMag.Analyst.Application.csproj", "{1A284153-36B6-4051-BBFD-7D6CD7BF574C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugoloMag.Analyst.Cli", "src\NugoloMag.Analyst.Cli\NugoloMag.Analyst.Cli.csproj", "{E4131C6C-A806-47D5-86FB-35EE7BBFEC8C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugoloMag.Analyst.Domain", "src\NugoloMag.Analyst.Domain\NugoloMag.Analyst.Domain.csproj", "{A399ED9B-8AAE-4D74-B2D1-E3A148F0A543}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugoloMag.Analyst.Infrastructure", "src\NugoloMag.Analyst.Infrastructure\NugoloMag.Analyst.Infrastructure.csproj", "{3F9C2F89-1822-42C2-AD67-CB9034621589}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{229A09E7-AF17-42E1-894E-6DF84928792E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NugoloMag.Analyst.Tests", "tests\NugoloMag.Analyst.Tests\NugoloMag.Analyst.Tests.csproj", "{6F1B9F85-50E0-4FB3-8E31-0ADE1809476B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1A284153-36B6-4051-BBFD-7D6CD7BF574C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A284153-36B6-4051-BBFD-7D6CD7BF574C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A284153-36B6-4051-BBFD-7D6CD7BF574C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A284153-36B6-4051-BBFD-7D6CD7BF574C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E4131C6C-A806-47D5-86FB-35EE7BBFEC8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E4131C6C-A806-47D5-86FB-35EE7BBFEC8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E4131C6C-A806-47D5-86FB-35EE7BBFEC8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E4131C6C-A806-47D5-86FB-35EE7BBFEC8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A399ED9B-8AAE-4D74-B2D1-E3A148F0A543}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A399ED9B-8AAE-4D74-B2D1-E3A148F0A543}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A399ED9B-8AAE-4D74-B2D1-E3A148F0A543}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A399ED9B-8AAE-4D74-B2D1-E3A148F0A543}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F9C2F89-1822-42C2-AD67-CB9034621589}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F9C2F89-1822-42C2-AD67-CB9034621589}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F9C2F89-1822-42C2-AD67-CB9034621589}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F9C2F89-1822-42C2-AD67-CB9034621589}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F1B9F85-50E0-4FB3-8E31-0ADE1809476B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F1B9F85-50E0-4FB3-8E31-0ADE1809476B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F1B9F85-50E0-4FB3-8E31-0ADE1809476B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F1B9F85-50E0-4FB3-8E31-0ADE1809476B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{1A284153-36B6-4051-BBFD-7D6CD7BF574C} = {A464D981-0048-4019-8F8D-5B9D9828FC72}
+		{E4131C6C-A806-47D5-86FB-35EE7BBFEC8C} = {A464D981-0048-4019-8F8D-5B9D9828FC72}
+		{A399ED9B-8AAE-4D74-B2D1-E3A148F0A543} = {A464D981-0048-4019-8F8D-5B9D9828FC72}
+		{3F9C2F89-1822-42C2-AD67-CB9034621589} = {A464D981-0048-4019-8F8D-5B9D9828FC72}
+		{6F1B9F85-50E0-4FB3-8E31-0ADE1809476B} = {229A09E7-AF17-42E1-894E-6DF84928792E}
+	EndGlobalSection
+EndGlobal
