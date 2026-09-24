@@ -20,10 +20,10 @@ public sealed class OllamaChatModel(HttpClient http, LlmOptions options) : IChat
             w.WriteStartObject();
             w.WriteString("model", options.Model);
             w.WriteBoolean("stream", false);
-            if (request.JsonOnly) w.WriteString("format", "json");
+            if (request.JsonOnly && options.SupportsJsonMode) w.WriteString("format", "json");
 
             w.WriteStartObject("options");
-            w.WriteNumber("temperature", options.Temperature);
+            if (options.Temperature is { } temperature) w.WriteNumber("temperature", temperature);
             w.WriteNumber("num_ctx", options.ContextWindow);
             w.WriteNumber("num_predict", Math.Min(request.MaxTokens, options.MaxTokens));
             w.WriteEndObject();
@@ -56,8 +56,14 @@ public sealed class OllamaChatModel(HttpClient http, LlmOptions options) : IChat
         });
 
         var baseUrl = (options.BaseUrl ?? "http://localhost:11434").TrimEnd('/');
-        using var content = new StringContent(body, Encoding.UTF8, "application/json");
-        using var response = await http.PostAsync($"{baseUrl}/api/chat", content, ct);
+        using var message = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/api/chat")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        // Ollama dietro un proxy con autenticazione (es. Ollama remoto): chiave opzionale come Bearer.
+        if (options.ApiKey is { Length: > 0 } key) message.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+        foreach (var (name, value) in options.Headers) message.Headers.TryAddWithoutValidation(name, value);
+        using var response = await http.SendAsync(message, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode) throw new LlmException($"Ollama HTTP {(int)response.StatusCode}: {(text.Length > 500 ? text[..500] : text)}");
 

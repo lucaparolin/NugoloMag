@@ -11,7 +11,7 @@ public sealed record LoopResult(string FinalText, IReadOnlyList<LoopStep> Steps,
 /// <summary>
 /// Il ciclo agentico condiviso da tutti gli agenti: il modello ragiona, chiede strumenti, riceve risultati, finché risponde.
 /// Funziona con qualsiasi <see cref="IChatModel"/>: se il modello non supporta gli strumenti in modo nativo
-/// (molti modelli locali su Ollama), li emula con un protocollo JSON documentato nel prompt.
+/// (molti modelli locali su Ollama), li emula con il protocollo JSON di agents/_protocols/tool-emulation.md.
 /// </summary>
 public static class ToolLoop
 {
@@ -22,17 +22,19 @@ public static class ToolLoop
         IToolbox tools,
         int maxRounds = 15,
         Func<ToolCall, bool>? stopAfter = null,
+        string? toolProtocol = null,
+        int maxTokens = 4000,
         CancellationToken ct = default)
     {
         var native = model.Info.SupportsTools;
         var messages = history.ToList();
         var steps = new List<LoopStep>();
-        var effectiveSystem = native || tools.Specs.Count == 0 ? system : system + "\n\n" + EmulationProtocol(tools.Specs);
+        var effectiveSystem = native || tools.Specs.Count == 0 ? system : system + "\n\n" + EmulationProtocol(toolProtocol, tools.Specs);
 
         for (var round = 0; round < maxRounds; round++)
         {
             var response = await model.CompleteAsync(new ChatRequest(
-                effectiveSystem, messages.ToList(), native ? tools.Specs : [], JsonOnly: !native && tools.Specs.Count > 0), ct);
+                effectiveSystem, messages.ToList(), native ? tools.Specs : [], maxTokens, JsonOnly: !native && tools.Specs.Count > 0), ct);
 
             if (response.Stop == ChatStop.Refusal)
                 return new LoopResult("Il modello ha rifiutato la richiesta.", steps, false, messages);
@@ -83,16 +85,17 @@ public static class ToolLoop
         return new LoopResult($"Limite di {maxRounds} passi raggiunto senza una risposta completa.", steps, false, messages);
     }
 
-    /// <summary>Istruzioni per i modelli senza tool calling nativo: una risposta = un oggetto JSON.</summary>
-    private static string EmulationProtocol(IReadOnlyList<ToolSpec> tools)
+    /// <summary>
+    /// Protocollo per i modelli senza tool calling nativo (testo in agents/_protocols/tool-emulation.md):
+    /// il segnaposto {{tools}} riceve l'elenco degli strumenti con il loro JSON Schema.
+    /// </summary>
+    public static string EmulationProtocol(string? protocol, IReadOnlyList<ToolSpec> tools)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("PROTOCOLLO STRUMENTI. Rispondi SEMPRE con un solo oggetto JSON, senza altro testo, in una di queste due forme:");
-        sb.AppendLine("""{"tool": "<nome strumento>", "arguments": { ... }}   per usare uno strumento""");
-        sb.AppendLine("""{"final": "<risposta per l'utente>"}                  quando hai finito""");
-        sb.AppendLine("Dopo ogni uso di strumento riceverai il risultato e potrai continuare. Strumenti disponibili:");
-        foreach (var t in tools) sb.AppendLine($"- {t.Name}: {t.Description}\n  argomenti (JSON Schema): {t.InputSchemaJson}");
-        return sb.ToString();
+        if (string.IsNullOrWhiteSpace(protocol))
+            throw new LlmException("Il modello non supporta gli strumenti nativi e manca il protocollo di emulazione (agents/_protocols/tool-emulation.md).");
+        var list = new StringBuilder();
+        foreach (var t in tools) list.AppendLine($"- {t.Name}: {t.Description}\n  argomenti (JSON Schema): {t.InputSchemaJson}");
+        return SkillTemplate.Render(protocol, new Dictionary<string, string?> { ["tools"] = list.ToString().TrimEnd() });
     }
 
     /// <summary>Interpreta la risposta emulata. Testo non-JSON viene trattato come risposta finale (modello che ignora il protocollo).</summary>

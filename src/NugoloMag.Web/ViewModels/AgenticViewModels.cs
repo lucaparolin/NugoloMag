@@ -1,4 +1,5 @@
 using NugoloMag.Analyst.Application.Llm;
+using NugoloMag.Analyst.Infrastructure.Llm;
 using NugoloMag.Analyst.Domain.Agentic;
 using NugoloMag.Analyst.Domain.Monitoring;
 
@@ -141,3 +142,15 @@ public static class AgenticLabels
 }
 
 public sealed record BriefingSection(IReadOnlyList<BriefingItem> Items, string Empty);
+
+public sealed record ConnectorRow(LlmOptions Options, bool IsDefault, IReadOnlyList<string> Agents, string KeyStatus);
+
+public sealed record AgentRouteRow(string AgentId, string SkillName, string Description, string Connector, string Origin, string? Error);
+
+public sealed record ConnectorsViewModel(
+    IReadOnlyList<ConnectorRow> Connectors,
+    IReadOnlyList<AgentRouteRow> Routes,
+    IReadOnlyList<Skill> Skills,
+    string? SkillsRoot,
+    ConnectorReport? Report,
+    string? Error);

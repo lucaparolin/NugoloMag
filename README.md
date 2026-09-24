@@ -39,30 +39,84 @@ linguaggio naturale e, se serve, esegue query SQL in sola lettura; non produce m
 A RM02, invece, la produttività cala del 20% per la maggiore complessità del lavoro (pezzi per riga 4 → 12). Il sistema lo segnala come
 informazione ed esclude esplicitamente un problema degli operatori.
 
-## Modelli linguistici: indipendenti dal fornitore, anche locali
+## Modelli linguistici: connettori indipendenti dal fornitore, anche locali
 
-| `Llm:Provider` | Cosa usa | Note |
+I modelli si configurano come **connettori con nome** in `Llm:Connectors`. Ogni agente può usare un connettore diverso.
+
+| `Provider` | Cosa usa | Note |
 |---|---|---|
 | `ollama` | API nativa `/api/chat` | Modelli locali. Serve un modello con tool calling (qwen2.5, llama3.1+, mistral-nemo…); altrimenti `SupportsTools=false` |
-| `openai` | `/v1/chat/completions` | OpenAI, Azure OpenAI, LM Studio, vLLM, llama.cpp server, anche Ollama `/v1` |
-| `anthropic` | SDK ufficiale | Claude; chiave in `ANTHROPIC_API_KEY` |
-| `none` | — | Tutto funziona; le risposte sono costruite dagli agenti deterministici |
+| `openai` | `/chat/completions` | OpenAI e compatibili: Gemini (`…/v1beta/openai`), Mistral, Groq, OpenRouter, LM Studio, vLLM, llama.cpp, Ollama `/v1` |
+| `azure` | Azure OpenAI | `BaseUrl` della risorsa, `Deployment`, `ApiVersion`; chiave nell'header `api-key` |
+| `anthropic` | SDK ufficiale | Claude |
+| `none` | — | Connettore spento: le risposte le costruiscono gli agenti deterministici |
 
 ```json
-"Llm": { "Provider": "ollama", "Model": "qwen2.5:7b", "BaseUrl": "http://localhost:11434",
-         "SupportsTools": true, "ContextWindow": 16384, "TimeoutSeconds": 300 }
+"Llm": {
+  "Default": "locale",
+  "Connectors": {
+    "locale": { "Provider": "ollama", "Model": "qwen2.5:7b", "BaseUrl": "http://localhost:11434", "ContextWindow": 16384 },
+    "claude": { "Provider": "anthropic", "Model": "claude-opus-5", "ApiKeyEnvironmentVariable": "ANTHROPIC_API_KEY" },
+    "openai": { "Provider": "openai", "Model": "gpt-5", "ApiKeyEnvironmentVariable": "OPENAI_API_KEY",
+                "TokenParameter": "max_completion_tokens", "Temperature": null }
+  },
+  "Agents": { "orchestrator": "claude", "briefing": "locale", "schema-advisor": "none" }
+}
 ```
 
-- Con `SupportsTools=false` gli strumenti vengono **emulati via JSON** (`ToolLoop`): il modello risponde con `{"tool": …}` oppure `{"final": …}`. Così funzionano anche modelli locali senza tool calling nativo.
-- Le chiavi non stanno nella configurazione: `ApiKeyEnvironmentVariable` indica il nome della variabile d'ambiente da cui leggerla.
-- Tutti gli agenti LLM (sintesi del report, revisore dello schema, assistente dati, orchestratore, briefing) dipendono solo da `IChatModel`.
+- **Scelta del connettore** di un agente, in quest'ordine: `Llm:Agents:<agente>`, poi `connector:` nella skill, poi `Llm:Default`. Con `"none"` l'agente lavora senza modello.
+- **Opzioni del connettore:**
+  - `SupportsTools=false`: gli strumenti vengono emulati via JSON (`{"tool": …}` / `{"final": …}`).
+  - `SupportsJsonMode=false`: per i server che non accettano `response_format`.
+  - `TokenParameter`: `max_tokens` oppure `max_completion_tokens`.
+  - `Temperature: null`: la temperatura non viene inviata (alcuni modelli di ragionamento la rifiutano).
+  - `Headers`: header aggiuntivi, per esempio per OpenRouter.
+  - `ContextWindow`: la finestra di contesto di Ollama.
+  - `TimeoutSeconds`: il timeout delle chiamate.
+- **Chiavi:** non stanno mai nella configurazione. `ApiKeyEnvironmentVariable` indica la variabile d'ambiente che le contiene.
+- **Compatibilità:** la vecchia forma piatta (`Llm:Provider`, `Llm:Model`, …) funziona ancora e diventa il connettore `default`.
+- **Override da variabili d'ambiente**, per esempio: `Llm__Connectors__locale__Model=qwen2.5:3b`, `Llm__Agents__orchestrator=claude`.
+- **Controllo all'avvio:** la configurazione viene verificata subito. Un connettore inesistente, un provider sconosciuto o una skill mancante bloccano l'avvio con un messaggio chiaro.
+
+### Skill degli agenti: fuori dal codice
+
+Le istruzioni degli agenti stanno nella cartella [`agents/`](agents/README.md), una sottocartella per agente. Nel codice C# non c'è nessun prompt.
+
+```
+agents/
+  orchestrator/SKILL.md          report-narrator/SKILL.md + prompts/narrative.md, prompts/question.md
+  data-assistant/SKILL.md        schema-advisor/SKILL.md      briefing/SKILL.md
+  connector-check/               prove standard del collaudo dei connettori
+  _shared/principi.md            principi comuni, inclusi con {{> _shared/principi.md}}
+  _protocols/tool-emulation.md   protocollo per i modelli senza tool calling nativo
+```
+
+- Ogni `SKILL.md` ha un front matter (`name`, `description`, `connector`, `max_tokens`, `max_rounds`) e il testo delle istruzioni. Il testo può contenere segnaposto come `{{today}}` e `{{source}}` e inclusioni di testi condivisi.
+- I file si ricaricano da soli quando cambiano. In sviluppo (`appsettings.Development.json` → `Skills:Path: ../../agents`) basta modificare il file e rifare la domanda.
+- In produzione la cartella viene copiata accanto all'eseguibile. Con `Skills:Path` si può puntare a un'altra cartella.
+- Gli agenti deterministici (inventario, produttività, indagine, impatto, raccomandazioni) non hanno prompt, perché i numeri non devono dipendere da un modello.
+
+### Collaudo dei connettori
+
+Il collaudo è disponibile in due modi:
+- la pagina **Connettori LLM**, con il pulsante «Collauda»;
+- da riga di comando: `nugolomag llm-test --config appsettings.json [--connector nome]`.
+
+Ogni connettore passa queste prove:
+1. **Configurazione:** provider riconosciuto e chiave presente.
+2. **Catalogo modelli:** il modello è installato (Ollama `/api/tags`, OpenAI `/models`).
+3. **Risposta semplice.**
+4. **Modalità JSON.**
+5. **Uso di uno strumento:** nativo o emulato, con un dato noto da riportare.
+
+Ogni prova mostra la sua latenza. Se gli strumenti nativi non funzionano, il collaudo suggerisce `SupportsTools=false`.
 
 **Ollama in pratica**
 ```bash
 docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
 docker exec ollama ollama pull qwen2.5:7b      # o llama3.1:8b, mistral-nemo: modelli con tool calling
 ```
-- Provato davvero con **qwen2.5 3B su CPU** (4 core): funziona con tool calling nativo, ma ogni risposta richiede da 30 secondi a qualche minuto (circa 7 token/s).
+- Provato davvero con **qwen2.5 3B su CPU** (4 core): il collaudo passa con strumenti nativi (API nativa e `/v1`) ed emulati. Le prove brevi durano pochi secondi, un'indagine completa 1–2 minuti.
 - Per un uso quotidiano serve una GPU, oppure un modello 7B–14B su una macchina adeguata. In alternativa si può usare un fornitore cloud cambiando solo la sezione `Llm`.
 - Qualità: con un modello da 3B i numeri restano corretti (vengono dagli agenti), ma la sintesi del briefing può contenere imprecisioni qualitative. Per questo sotto ogni risposta c'è il verdetto deterministico degli agenti e il briefing strutturato. Per l'uso reale consiglio almeno 7B.
 - Il sistema resta utilizzabile anche con modelli lenti: rilevamento, indagine, impatto e raccomandazioni sono deterministici e immediati; l'LLM serve per il linguaggio e per le domande libere.
@@ -76,6 +130,7 @@ docker exec ollama ollama pull qwen2.5:7b      # o llama3.1:8b, mistral-nemo: mo
 | **Indagini** | Domande operative trasformate in indagini multi-agente, con piano, tracciato, ipotesi, impatto e azioni |
 | **Assistente dati** | Conversazione libera che scrive ed esegue query SQL in sola lettura |
 | **Query salvate** | Analisi rieseguibili |
+| **Connettori LLM** | Connettori configurati, agente → connettore, skill caricate e collaudo di ogni connettore |
 | **Configurazione** | Analisi del database del gestionale (agente di discovery) e attivazione del monitoraggio |
 
 ## Da Anomalo a NugoloMag
@@ -167,25 +222,29 @@ Domain          Agentic: Incident, AgentFinding, EvidenceItem, Hypothesis, Recom
 Application     Porte: IInventoryRepository, ITaskRepository, ISourceRegistry/ISourceDatabase, IDiscoveryStore, IMonitorStore,
                        IChangeDetector, IRootCauseAnalyzer, IInsightNarrator, ISchemaAdvisor, IChatModel, IToolbox,
                        IIncidentStore, IBriefingStore, IInvestigationStore
-                Llm: IChatModel, ToolLoop (tool calling nativo o emulato), CompositeToolbox
+                Llm: IChatModel, ToolLoop (tool calling nativo o emulato), CompositeToolbox,
+                     ISkillLibrary/Skill/SkillTemplate, AgentLlm (agente → skill + connettore), IConnectorCatalog
                 Agentic: WarehouseOrchestrator, InventoryAgent, ProductivityAgent, InvestigationAgent, ImpactAgent,
                          RecommendationAgent, BriefingAgent, LearningAgent, IncidentManager, IntentClassifier
                 Detector, AnalystService, DatabaseDiscoveryAgent (+ classificatori, proposer, validator),
                 MonitoringService, ConversationService, DataAgentToolbox, ReadOnlySqlGuard
 Infrastructure  SqlServerSourceDatabase (catalogo, profilazione, InventoryQueryBuilder T-SQL),
                 SqlDiscoveryStore / SqlMonitorStore + StoreSchemaInstaller (schema nugolo),
-                Llm: AnthropicChatModel, OpenAiCompatibleChatModel, OllamaChatModel, LlmInsightNarrator, LlmSchemaAdvisor;
+                Llm: AnthropicChatModel, OpenAiCompatibleChatModel (anche Azure), OllamaChatModel, LlmConnectorRegistry,
+                     LlmConfiguration, FileSkillLibrary (agents/), LlmDiagnostics, LlmInsightNarrator, LlmSchemaAdvisor;
                 store di conversazioni, query salvate, incidenti, briefing e indagini,
                 report HTML/MD/JSON, CSV, dati demo
-Web (MVC)       Controller (Operations, Briefing, Investigations, Home, Discovery, Monitors, Runs, Assistant, Queries), viste Razor tipizzate, MonitoringWorker
-Cli             demo / analyze / ask / discover / seed-demo
+Web (MVC)       Controller (Operations, Briefing, Investigations, Home, Discovery, Monitors, Runs, Assistant, Queries, Connectors), viste Razor tipizzate, MonitoringWorker
+Cli             demo / analyze / ask / discover / seed-demo / llm-test
+agents/         skill degli agenti (istruzioni per i modelli), fuori dal codice
 ```
 
-**Senza reflection nel nostro codice**
+**Reflection: solo dove conviene**
 - Composition root esplicita (`CompositionRoot`): ogni servizio e ogni controller è creato con `new` in una factory. `AddControllersAsServices` trova i controller già registrati e non li attiva via reflection.
 - I form si leggono da `IFormCollection` con conversioni esplicite (`FormReader`, `MappingForm`), senza model binding su proprietà.
 - Le viste sono tipizzate: niente `ViewBag`/`dynamic`, route values con `RouteValueDictionary`.
 - Il JSON usa un `JsonSerializerContext` generato a compile-time. Gli enum persistiti hanno codici espliciti (`DomainCodes`, `StoreCodes`) e non passano da `Enum.ToString`/`Parse`.
+- Eccezione voluta: la sezione `Llm` si legge con il binder di configurazione (reflection). La struttura è annidata (connettori, header, instradamento) e crescerà: scriverla a mano costerebbe più di quanto rende.
 - Limite dichiarato: il framework ASP.NET Core MVC (routing delle action, Razor, logging) e l'SDK Anthropic usano reflection al loro interno. Non è evitabile restando su MVC.
 
 Per aggiungere un controllo basta scrivere un nuovo `IChangeDetector` e registrarlo in `CompositionRoot`.
@@ -198,13 +257,14 @@ Per aggiungere un controllo basta scrivere un nuovo `IChangeDetector` e registra
   "Sources": { "Gestionale": "Server=...;Database=Gestionale;...;ApplicationIntent=ReadOnly" },
   "Monitoring": { "TimeZone": "Europe/Rome", "PollSeconds": 60 },
   "Agentic": { "LaborCostPerHour": 28, "MaterialAmount": 5000, "ImpactHorizonDays": 5 },
-  "Llm": { "Provider": "ollama", "Model": "qwen2.5:7b", "BaseUrl": "http://localhost:11434" }
+  "Llm": { "Default": "locale", "Connectors": { "locale": { "Provider": "ollama", "Model": "qwen2.5:7b" } }, "Agents": {} },
+  "Skills": { "Path": "" }
 }
 ```
 
 - `NugoloStore` è il database dell'app. Schema e tabelle `nugolo.*` si creano da soli all'avvio.
 - `Sources` elenca uno o più gestionali, letti in sola lettura.
-- `Agentic` contiene i parametri economici degli agenti (costo orario, soglia di materialità, orizzonte d'impatto); `Llm` sceglie il modello linguistico (vedi sopra).
+- `Agentic` contiene i parametri economici degli agenti (costo orario, soglia di materialità, orizzonte d'impatto); `Llm` definisce connettori e instradamento (vedi sopra); `Skills:Path` la cartella delle skill (vuoto = `agents/` accanto all'eseguibile).
 
 ### Avvio
 
@@ -243,9 +303,14 @@ dotnet run --project src/NugoloMag.Analyst.Cli -- analyze --csv export.csv --aso
 
 # Domanda in linguaggio naturale (richiede un LLM: --llm ollama --model qwen2.5:7b, oppure ANTHROPIC_API_KEY)
 dotnet run --project src/NugoloMag.Analyst.Cli -- ask "Perché MI01 ha avuto un picco di uscite?" --csv export.csv
+
+# Collaudo dei connettori LLM: tutti quelli dell'appsettings, oppure uno solo, oppure uno definito dai flag
+dotnet run --project src/NugoloMag.Analyst.Cli -- llm-test --config src/NugoloMag.Web/appsettings.json
+dotnet run --project src/NugoloMag.Analyst.Cli -- llm-test --config src/NugoloMag.Web/appsettings.json --connector locale
+dotnet run --project src/NugoloMag.Analyst.Cli -- llm-test --llm ollama --model qwen2.5:3b --llm-url http://localhost:11434
 ```
 
-- La sintesi la scrive l'LLM scelto con `--llm ollama|openai|anthropic --model <id> [--llm-url <url>]`. Con `ANTHROPIC_API_KEY` impostata il predefinito è Claude. Senza LLM, o con `--no-llm`, la scrive un template deterministico.
+- La sintesi la scrive l'LLM scelto con `--config appsettings.json` oppure `--llm ollama|openai|azure|anthropic --model <id> [--llm-url <url>] [--no-tools]`. Con `ANTHROPIC_API_KEY` impostata il predefinito è Claude. Senza LLM, o con `--no-llm`, la scrive un template deterministico.
 - Se ci sono finding ad alta priorità il programma esce con codice `2`: basta un job schedulato (SQL Agent, Task Scheduler, cron) per far partire un alert.
 - Le soglie sono in `DetectionSettings`.
 
@@ -257,6 +322,8 @@ Un report di esempio è in [`docs/esempio/`](docs/esempio/).
 dotnet test
 # integrazione su SQL Server reale: analisi del DB → attivazione → esecuzione → report salvato
 NUGOLO_TEST_SQLSERVER="Server=localhost;User ID=sa;Password=...;TrustServerCertificate=true" dotnet test
+# collaudo reale di un Ollama locale (risposta, JSON, strumenti)
+NUGOLO_TEST_OLLAMA=http://localhost:11434 NUGOLO_TEST_OLLAMA_MODEL=qwen2.5:3b dotnet test
 ```
 
 I test coprono ogni detector (anche l'assenza di falsi positivi su dati stabili e stagionali), la root cause,

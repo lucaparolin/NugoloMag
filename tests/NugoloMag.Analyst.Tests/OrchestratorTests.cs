@@ -32,11 +32,11 @@ public class OrchestratorTests(ITestOutputHelper output)
         var incidents = new InMemoryIncidentStore();
         var specialists = new ISpecialistAgent[] { new InventoryAgent(new DetectionSettings(), settings), new ProductivityAgent(settings) };
         var learning = new LearningAgent(incidents, settings, TimeProvider.System);
-        var team = new AgentTeam(specialists, new InvestigationAgent(specialists), new ImpactAgent(settings), new RecommendationAgent(), new BriefingAgent(model), learning);
+        var team = new AgentTeam(specialists, new InvestigationAgent(specialists), new ImpactAgent(settings), new RecommendationAgent(), new BriefingAgent(model is null ? null : TestLlm.For(model)), learning);
         var briefings = new InMemoryBriefingStore();
         var investigations = new InMemoryInvestigationStore();
         var orchestrator = new WarehouseOrchestrator(team, incidents, briefings, investigations, source, new SingleMonitorStore(Monitor),
-            new NoSavedQueries(), settings, model, TimeProvider.System, TimeZoneInfo.Utc);
+            new NoSavedQueries(), settings, model is null ? null : TestLlm.For(model), TimeProvider.System, TimeZoneInfo.Utc);
         return new Harness(orchestrator, incidents, briefings, investigations, source, learning);
     }
 

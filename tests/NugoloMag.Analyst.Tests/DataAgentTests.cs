@@ -73,7 +73,7 @@ public class LlmProviderTests
     private static async Task<(IReadOnlyList<ConversationEntry> Entries, RecordingToolbox Tools)> Run(IChatModel model)
     {
         var tools = new RecordingToolbox();
-        var entries = await new LlmDataAgent(model).ReplyAsync(Context, [], "Quanti movimenti ci sono?", tools);
+        var entries = await new LlmDataAgent(TestLlm.For(model)).ReplyAsync(Context, [], "Quanti movimenti ci sono?", tools);
         return (entries, tools);
     }
 

@@ -1,0 +1,97 @@
+@using NugoloMag.Analyst.Infrastructure.Llm
+@model ConnectorsViewModel
+@{
+    static string Css(CheckStatus s) => s switch { CheckStatus.Passed => "ok", CheckStatus.Warning => "warn", CheckStatus.Failed => "fail", _ => "muted" };
+    static string Label(CheckStatus s) => s switch { CheckStatus.Passed => "ok", CheckStatus.Warning => "attenzione", CheckStatus.Failed => "fallita", _ => "saltata" };
+}
+<h1>Connettori LLM</h1>
+<p class="lead">I modelli linguistici disponibili (sezione <code>Llm:Connectors</code>), quale agente usa quale connettore e il collaudo di ciascuno.
+Le istruzioni degli agenti non sono nel codice: stanno nelle cartelle <code>agents/&lt;agente&gt;/SKILL.md</code>.</p>
+
+@if (Model.Error is { } error) { <p class="alert fail">@error</p> }
+
+@if (Model.Report is { } r)
+{
+    <div class="card">
+        <h2>Collaudo di «@r.Connector» <span class="badge big @(r.IsUsable ? "ok" : "fail")">@(r.IsUsable ? "utilizzabile" : "non utilizzabile")</span></h2>
+        <p class="muted small">@r.Provider · @r.Model · @r.Endpoint · strumenti @(r.ToolsNative ? "nativi" : "emulati") · @r.At.ToLocalTime().ToString("dd/MM HH:mm:ss")</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Prova</th><th>Esito</th><th>Tempo</th><th>Dettaglio</th></tr></thead>
+                <tbody>
+                @foreach (var c in r.Checks)
+                {
+                    <tr><td>@c.Name</td><td><span class="badge @Css(c.Status)">@Label(c.Status)</span></td>
+                        <td>@(c.Seconds > 0 ? c.Seconds.ToString("0.0") + " s" : "")</td><td class="small">@c.Detail</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<h2>Connettori</h2>
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Nome</th><th>Fornitore</th><th>Modello</th><th>Indirizzo</th><th>Strumenti</th><th>Chiave</th><th>Usato da</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var c in Model.Connectors)
+        {
+            var o = c.Options;
+            <tr>
+                <td><strong>@o.Name</strong>@if (c.IsDefault) { <span class="tag">predefinito</span> }<div class="muted small">@o.Description</div></td>
+                <td>@o.Provider</td>
+                <td>@o.Model@if (o.Kind == "azure") { <div class="muted small">deployment @(o.Deployment ?? o.Model), api @o.ApiVersion</div> }</td>
+                <td class="small">@(o.BaseUrl ?? "standard del fornitore")</td>
+                <td>@(o.SupportsTools ? "nativi" : "emulati")</td>
+                <td class="small">@c.KeyStatus</td>
+                <td class="small">@(c.Agents.Count == 0 ? "—" : string.Join(", ", c.Agents))</td>
+                <td>
+                    @if (o.IsEnabled)
+                    {
+                        <form method="post" action="/Connectors/Test" data-busy="Collaudo di @o.Name in corso… (un modello locale su CPU può richiedere qualche minuto)">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="connector" value="@o.Name" />
+                            <button type="submit">Collauda</button>
+                        </form>
+                    }
+                    else { <span class="badge muted">disattivato</span> }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+@if (Model.Connectors.Count == 0) { <p class="muted">Nessun connettore configurato: le funzioni LLM sono spente, gli agenti deterministici funzionano comunque.</p> }
+
+<h2>Agenti</h2>
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Agente</th><th>Skill</th><th>Connettore</th><th>Scelto da</th></tr></thead>
+        <tbody>
+        @foreach (var a in Model.Routes)
+        {
+            <tr>
+                <td><code>@a.AgentId</code></td>
+                <td>@a.SkillName<div class="muted small">@a.Description</div>@if (a.Error is { } e) { <div class="alert fail small">@e</div> }</td>
+                <td>@(a.Connector == "none" ? "nessuno (solo agenti deterministici)" : a.Connector)</td>
+                <td class="small">@a.Origin</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<p class="muted small">Per cambiare il modello di un agente: <code>Llm:Agents:&lt;agente&gt;</code> in appsettings (es. <code>"orchestrator": "claude"</code>), oppure <code>connector:</code> nel front matter della skill.</p>
+
+<h2>Skill caricate</h2>
+<p class="muted small">Cartella: <code>@(Model.SkillsRoot ?? "—")</code>. I file si possono modificare senza riavviare: vengono riletti al primo uso successivo.</p>
+<ul class="list">
+    @foreach (var s in Model.Skills)
+    {
+        <li><code>@s.Id</code> — @s.Name
+            <span class="muted small">
+                @(s.Instructions.Length) caratteri@(s.Prompts.Count > 0 ? ", prompt: " + string.Join(", ", s.Prompts.Keys) : "")@(s.Settings.Count > 0 ? " · " + string.Join(", ", s.Settings.Where(kv => kv.Key is not ("name" or "description")).Select(kv => $"{kv.Key}={kv.Value}")) : "")
+            </span>
+        </li>
+    }
+</ul>

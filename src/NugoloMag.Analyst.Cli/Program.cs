@@ -1,9 +1,11 @@
 using System.Globalization;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using NugoloMag.Analyst.Application;
 using NugoloMag.Analyst.Application.Abstractions;
 using NugoloMag.Analyst.Application.Detection;
 using NugoloMag.Analyst.Application.Discovery;
+using NugoloMag.Analyst.Application.Llm;
 using NugoloMag.Analyst.Application.Narration;
 using NugoloMag.Analyst.Application.RootCause;
 using NugoloMag.Analyst.Domain;
@@ -30,6 +32,9 @@ try
         Console.WriteLine($"Database GestionaleDemo creato con movimenti fino al {seedAsOf:dd/MM/yyyy}.");
         return 0;
     }
+
+    if (options.Command == "llm-test")
+        return await LlmTestAsync(options);
 
     if (options.Command == "discover")
     {
@@ -102,7 +107,7 @@ try
     Console.WriteLine(report.Narrative);
     return report.Findings.Any(f => f.Severity == Severity.High) ? 2 : 0; // exit code utile per job schedulati / alert
 }
-catch (Exception ex) when (ex is ArgumentException or FormatException or IOException or SqlException)
+catch (Exception ex) when (ex is ArgumentException or FormatException or IOException or SqlException or SkillException or LlmException)
 {
     Console.Error.WriteLine($"Errore: {ex.Message}");
     return 1;
@@ -125,17 +130,68 @@ static IInsightNarrator CreateNarrator(CliOptions options)
 {
     var template = new TemplateInsightNarrator();
     if (options.Has("no-llm")) return template;
+    var llm = CreateAgentLlm(options, out _);
+    return llm.IsEnabled(SkillIds.ReportNarrator) ? new LlmInsightNarrator(llm, template) : template;
+}
 
-    // --llm ollama|openai|anthropic --model <id> [--llm-url <base url>]; per anthropic la chiave è in ANTHROPIC_API_KEY.
-    var llm = new LlmOptions
+// Connettori: --config <appsettings.json> (sezione Llm, come nella web app) oppure un connettore "cli" dai flag
+// --llm ollama|openai|azure|anthropic --model <id> [--llm-url <url>] [--api-key-env VAR] [--no-tools].
+// Skill: --skills <cartella> oppure la copia di agents/ accanto all'eseguibile.
+static AgentLlm CreateAgentLlm(CliOptions options, out LlmConnectorRegistry registry)
+{
+    LlmSettings settings;
+    if (options.Get("config") is { } config)
     {
-        Provider = options.Get("llm") ?? (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")) ? "none" : "anthropic"),
-        Model = options.Get("model") ?? (options.Get("llm") == "ollama" ? "qwen2.5:7b" : AnthropicChatModel.DefaultModel),
-        BaseUrl = options.Get("llm-url"),
-        ApiKeyEnvironmentVariable = options.Get("llm") == "openai" ? "OPENAI_API_KEY" : null
-    };
-    var model = ChatModelFactory.Create(llm, new HttpClient { Timeout = TimeSpan.FromSeconds(llm.TimeoutSeconds) });
-    return model is null ? template : new LlmInsightNarrator(model, template);
+        settings = LlmConfiguration.Read(new ConfigurationBuilder().AddJsonFile(Path.GetFullPath(config), optional: false).AddEnvironmentVariables().Build());
+        if (options.Get("connector") is { } only) settings.Default = only;
+    }
+    else
+    {
+        var provider = options.Get("llm") ?? (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")) ? "none" : "anthropic");
+        var cli = new LlmOptions
+        {
+            Name = "cli",
+            Provider = provider,
+            Model = options.Get("model") ?? (provider == "ollama" ? "qwen2.5:7b" : AnthropicChatModel.DefaultModel),
+            BaseUrl = options.Get("llm-url"),
+            ApiKeyEnvironmentVariable = options.Get("api-key-env") ?? provider switch { "openai" => "OPENAI_API_KEY", "azure" => "AZURE_OPENAI_API_KEY", _ => null },
+            SupportsTools = !options.Has("no-tools"),
+            Deployment = options.Get("deployment"),
+            TimeoutSeconds = options.GetInt("timeout", 600)
+        };
+        settings = new LlmSettings { Default = "cli" };
+        settings.Connectors["cli"] = cli;
+    }
+
+    var problems = LlmConfiguration.Validate(settings);
+    if (problems.Count > 0) throw new ArgumentException("Configurazione LLM non valida:\n- " + string.Join("\n- ", problems));
+    registry = new LlmConnectorRegistry(settings);
+    return new AgentLlm(new FileSkillLibrary(options.Get("skills") ?? Path.Combine(AppContext.BaseDirectory, "agents")), registry, settings.Agents);
+}
+
+static async Task<int> LlmTestAsync(CliOptions options)
+{
+    var llm = CreateAgentLlm(options, out var registry);
+    var names = options.Get("connector") is { } one ? [one] : registry.Names.Where(n => registry.Options(n)!.IsEnabled).ToList();
+    if (names.Count == 0) throw new ArgumentException("Nessun connettore da collaudare: usare --config appsettings.json oppure --llm/--model.");
+
+    var diagnostics = new LlmDiagnostics(llm.Skills);
+    var allUsable = true;
+    foreach (var name in names)
+    {
+        var o = registry.Options(name) ?? throw new ArgumentException($"Connettore '{name}' non configurato.");
+        Console.WriteLine($"== {o.Name}: {o.Provider} / {o.Model}");
+        var report = await diagnostics.RunAsync(o, registry.Get(name));
+        foreach (var c in report.Checks)
+            Console.WriteLine($"  [{c.Status switch { CheckStatus.Passed => " ok ", CheckStatus.Warning => "warn", CheckStatus.Failed => "FAIL", _ => "skip" }}] {c.Name,-30} {(c.Seconds > 0 ? $"{c.Seconds,6:0.0}s" : "       ")}  {c.Detail}");
+        Console.WriteLine(report.IsUsable ? "  → utilizzabile" : "  → NON utilizzabile");
+        allUsable &= report.IsUsable;
+    }
+
+    Console.WriteLine();
+    foreach (var agent in SkillIds.All)
+        Console.WriteLine($"  agente {agent,-16} → {llm.ConnectorFor(agent) ?? "none"}");
+    return allUsable ? 0 : 3;
 }
 
 internal sealed class CliOptions
@@ -150,9 +206,13 @@ internal sealed class CliOptions
           nugolomag ask "domanda" (--csv file | --connection "...") [--asof yyyy-MM-dd]
           nugolomag discover --connection "..." [--show-query]     analisi del database (agente)
           nugolomag seed-demo --master "..." [--asof yyyy-MM-dd]   crea il database GestionaleDemo
+          nugolomag llm-test [--config appsettings.json] [--connector nome]   collaudo dei connettori LLM
 
-        Sintesi scritta da un LLM: --llm ollama|openai|anthropic --model <id> [--llm-url <url>]
-        (con ANTHROPIC_API_KEY impostata il default è Claude); senza LLM, o con --no-llm, da un template deterministico.
+        Connettore LLM: --config appsettings.json [--connector nome]  (sezione Llm, come la web app)
+                    oppure --llm ollama|openai|azure|anthropic --model <id> [--llm-url <url>] [--api-key-env VAR]
+                           [--deployment nome] [--no-tools] [--timeout secondi]
+        (con ANTHROPIC_API_KEY impostata il default è Claude); senza LLM, o con --no-llm, sintesi da template deterministico.
+        Istruzioni degli agenti: cartella agents/ accanto all'eseguibile, oppure --skills <cartella>.
         Exit code 2 se ci sono finding ad alta priorità (utile per alert da job schedulati).
         """;
 

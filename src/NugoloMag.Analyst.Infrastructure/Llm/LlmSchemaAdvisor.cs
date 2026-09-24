@@ -7,25 +7,13 @@ namespace NugoloMag.Analyst.Infrastructure.Llm;
 
 /// <summary>
 /// Secondo parere di un LLM sulla proposta dell'agente: legge candidati, mapping, causali e prova sui dati
-/// e segnala scelte dubbie. Non cambia nulla da solo: l'utente decide.
+/// e segnala scelte dubbie. Non cambia nulla da solo: l'utente decide. Istruzioni in agents/schema-advisor/SKILL.md.
 /// </summary>
-public sealed class LlmSchemaAdvisor(IChatModel model) : ISchemaAdvisor
+public sealed class LlmSchemaAdvisor(AgentLlm llm) : ISchemaAdvisor
 {
-    private const string SystemPrompt = """
-        Sei un consulente esperto di gestionali italiani (ERP) e di database SQL Server.
-        Ricevi in JSON l'analisi automatica di un database: tabelle candidate con punteggi e motivazioni,
-        il mapping proposto verso il modello "posizione giornaliera di magazzino", le causali di movimento trovate
-        e l'esito della query sui dati reali.
-
-        Rispondi in italiano, massimo 12 righe, in testo semplice con elenchi "-":
-        - le scelte che ti sembrano corrette (una riga);
-        - i rischi concreti (causali assegnate male, tabella sbagliata, giacenze ricostruite inaffidabili, colonne mancanti);
-        - cosa verificare con chi conosce il gestionale.
-        Non inventare tabelle o colonne che non compaiono nel JSON.
-        """;
-
     public async Task<string?> ReviewAsync(DiscoveryReport report, CancellationToken ct = default)
     {
+        if (llm.Resolve(SkillIds.SchemaAdvisor) is not { } agent) return null;
         // Versione compatta: candidati e mapping sì, schema completo delle tabelle e query no (contesti piccoli dei modelli locali).
         var json = NugoloJson.Serialize(report with
         {
@@ -36,7 +24,7 @@ public sealed class LlmSchemaAdvisor(IChatModel model) : ISchemaAdvisor
             Validation = report.Validation is { } v ? v with { Preview = v.Preview.Take(3).ToList() } : null
         });
 
-        var response = await model.CompleteAsync(new ChatRequest(SystemPrompt, [ChatMessage.User($"<analisi>\n{json}\n</analisi>")], [], MaxTokens: 2000), ct);
+        var response = await agent.CompleteAsync(agent.System(), $"<analisi>\n{json}\n</analisi>", ct);
         if (response.Stop == ChatStop.Refusal) return null;
         var text = response.Text.Trim();
         return text.Length == 0 ? null : text;

@@ -9,7 +9,7 @@ namespace NugoloMag.Analyst.Application.Agentic;
 /// La struttura (sintesi, rischi critici, segnali positivi, cause, azioni, watch list) è deterministica;
 /// un LLM, se configurato, la comprime in poche frasi di linguaggio manageriale senza aggiungere numeri.
 /// </summary>
-public sealed class BriefingAgent(IChatModel? model)
+public sealed class BriefingAgent(AgentLlm? llm)
 {
     public string Name => AgentNames.Briefing;
 
@@ -67,7 +67,7 @@ public sealed class BriefingAgent(IChatModel? model)
 
     private async Task<string?> NarrateAsync(ExecutiveBriefing b, CancellationToken ct)
     {
-        if (model is null) return null;
+        if (llm?.Resolve(SkillIds.Briefing) is not { } agent) return null;
         var sb = new StringBuilder();
         sb.AppendLine($"Briefing al {b.AsOf:dd/MM/yyyy} per la sorgente {b.SourceName}.");
         void Section(string title, IEnumerable<string> lines)
@@ -83,13 +83,7 @@ public sealed class BriefingAgent(IChatModel? model)
 
         try
         {
-            var response = await model.CompleteAsync(new ChatRequest(
-                """
-                Sei il responsabile operations che scrive alla direzione. Riscrivi il briefing in 4-6 frasi in italiano:
-                cosa è successo, perché, cosa rischiamo, cosa proponi. Usa SOLO fatti e numeri presenti nel testo, non aggiungerne.
-                Distingui cause confermate da ipotesi. Niente elenchi, niente titoli.
-                """,
-                [ChatMessage.User(sb.ToString())], [], MaxTokens: 800), ct);
+            var response = await agent.CompleteAsync(agent.System(), sb.ToString(), ct);
             return response.Stop == ChatStop.Refusal || string.IsNullOrWhiteSpace(response.Text) ? null : response.Text.Trim();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

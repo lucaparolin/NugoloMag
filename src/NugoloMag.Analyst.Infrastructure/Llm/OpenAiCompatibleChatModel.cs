@@ -6,12 +6,15 @@ using NugoloMag.Analyst.Application.Llm;
 namespace NugoloMag.Analyst.Infrastructure.Llm;
 
 /// <summary>
-/// Client per l'API "chat completions" in stile OpenAI: OpenAI, Azure OpenAI, LM Studio, vLLM, llama.cpp server,
-/// e anche Ollama (endpoint /v1). HTTP e JSON scritti a mano.
+/// Client per l'API "chat completions" in stile OpenAI: OpenAI, Azure OpenAI, Gemini (endpoint OpenAI), Mistral, Groq,
+/// OpenRouter, LM Studio, vLLM, llama.cpp server e anche Ollama (endpoint /v1). HTTP e JSON scritti a mano.
+/// Azure differisce solo per URL (deployment + api-version) e header della chiave (api-key).
 /// </summary>
 public sealed class OpenAiCompatibleChatModel(HttpClient http, LlmOptions options) : IChatModel
 {
-    public ChatModelInfo Info { get; } = new("openai-compatible", options.Model, options.SupportsTools);
+    public ChatModelInfo Info { get; } = new(options.Kind == "azure" ? "azure-openai" : "openai-compatible", options.Model, options.SupportsTools);
+
+    private bool IsAzure => options.Kind == "azure";
 
     public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken ct = default)
     {
@@ -19,9 +22,9 @@ public sealed class OpenAiCompatibleChatModel(HttpClient http, LlmOptions option
         {
             w.WriteStartObject();
             w.WriteString("model", options.Model);
-            w.WriteNumber("max_tokens", Math.Min(request.MaxTokens, options.MaxTokens));
-            w.WriteNumber("temperature", options.Temperature);
-            if (request.JsonOnly)
+            w.WriteNumber(options.TokenParameter, Math.Min(request.MaxTokens, options.MaxTokens));
+            if (options.Temperature is { } temperature) w.WriteNumber("temperature", temperature);
+            if (request.JsonOnly && options.SupportsJsonMode)
             {
                 w.WriteStartObject("response_format");
                 w.WriteString("type", "json_object");
@@ -55,12 +58,16 @@ public sealed class OpenAiCompatibleChatModel(HttpClient http, LlmOptions option
             w.WriteEndObject();
         });
 
-        var baseUrl = (options.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/');
-        using var message = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/chat/completions")
+        using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint(options))
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json")
         };
-        if (options.ApiKey is { Length: > 0 } key) message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        if (options.ApiKey is { Length: > 0 } key)
+        {
+            if (IsAzure) message.Headers.Add("api-key", key);
+            else message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        }
+        foreach (var (name, value) in options.Headers) message.Headers.TryAddWithoutValidation(name, value);
 
         using var response = await http.SendAsync(message, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
@@ -91,6 +98,17 @@ public sealed class OpenAiCompatibleChatModel(HttpClient http, LlmOptions option
             _ => ChatStop.EndTurn
         };
         return new ChatResponse(Json.String(msg, "content") ?? "", calls, stop);
+    }
+
+    public static string Endpoint(LlmOptions options)
+    {
+        if (options.Kind == "azure")
+        {
+            var resource = (options.BaseUrl ?? throw new LlmException($"Connettore '{options.Name}': Azure richiede BaseUrl.")).TrimEnd('/');
+            var deployment = Uri.EscapeDataString(options.Deployment ?? options.Model);
+            return $"{resource}/openai/deployments/{deployment}/chat/completions?api-version={Uri.EscapeDataString(options.ApiVersion)}";
+        }
+        return $"{(options.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/')}/chat/completions";
     }
 
     private static void WriteMessage(Utf8JsonWriter w, ChatMessage m)

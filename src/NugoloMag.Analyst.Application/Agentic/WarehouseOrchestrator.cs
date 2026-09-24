@@ -35,20 +35,10 @@ public sealed class WarehouseOrchestrator(
     IMonitorStore monitors,
     ISavedQueryStore savedQueries,
     AgenticSettings settings,
-    IChatModel? model,
+    AgentLlm? llm,
     TimeProvider clock,
     TimeZoneInfo zone)
 {
-    private const string Principles = """
-        Principi del sistema (non negoziabili):
-        - Prove prima delle conclusioni: distingui fatto (osservato), segnale (andamento rilevante), ipotesi (plausibile) e causa confermata. Mai presentare un'ipotesi come causa confermata.
-        - Il contesto conta più delle soglie fisse; l'impatto conta più del rumore.
-        - Raccomandazioni concrete: cosa, dove, su quale ambito, perché, effetto atteso, urgenza, confidenza, controindicazioni.
-        - Non attribuire cali di prestazione agli operatori senza prove forti, dopo aver escluso le condizioni operative.
-        - Se l'incertezza è alta, proponi la prossima indagine utile invece di fingere di sapere.
-        - I numeri vengono SOLO dai risultati degli strumenti e dall'indagine fornita. Non inventarli.
-        """;
-
     // ------------------------------------------------------------------ ciclo proattivo
 
     public async Task<CycleResult> RunCycleAsync(MonitorDefinition monitor, DateOnly asOf, CancellationToken ct = default)
@@ -175,9 +165,10 @@ public sealed class WarehouseOrchestrator(
             recommendations = team.Recommendation.Recommend(seed, investigation, impact, ws);
         }
 
-        var answer = model is null
+        var agent = llm?.Resolve(SkillIds.Orchestrator);
+        var answer = agent is null
             ? TemplateAnswer(question, intent, findings, seed, investigation, impact, recommendations)
-            : await LlmAnswerAsync(question, intent, plan, ws, selected, findings, open, seed, investigation, impact, recommendations, trace, ct);
+            : await LlmAnswerAsync(agent, question, intent, plan, ws, selected, findings, open, seed, investigation, impact, recommendations, trace, ct);
 
         var result = new InvestigationCase
         {
@@ -201,7 +192,7 @@ public sealed class WarehouseOrchestrator(
     }
 
     private async Task<string> LlmAnswerAsync(
-        string question, QuestionIntent intent, IReadOnlyList<string> plan, AgentWorkspace ws, IReadOnlyList<ISpecialistAgent> selected,
+        AgentBinding agent, string question, QuestionIntent intent, IReadOnlyList<string> plan, AgentWorkspace ws, IReadOnlyList<ISpecialistAgent> selected,
         IReadOnlyList<AgentFinding> findings, IReadOnlyList<Incident> open, AgentFinding? seed, InvestigationResult? investigation,
         IReadOnlyList<ImpactEstimate> impact, IReadOnlyList<Recommendation> recommendations, List<AgentTraceStep> trace, CancellationToken ct)
     {
@@ -216,7 +207,6 @@ public sealed class WarehouseOrchestrator(
             context.AppendLine($"Indagine preliminare sul segnale principale ({seed.Title}):");
             foreach (var h in investigation.Hypotheses)
                 context.AppendLine($"- ipotesi '{h.Statement}': {Status(h.Status)}, confidenza {Confidence(h.Confidence)}; a favore: {string.Join("; ", h.Supporting)}; contro: {string.Join("; ", h.Contradicting)}; mancano: {string.Join("; ", h.Missing)}");
-            context.AppendLine("Le ipotesi SCARTATE non sono cause: non presentarle come tali. Le ipotesi DA VERIFICARE non sono dimostrate.");
             if (investigation.Counterfactual is { } cf) context.AppendLine($"- controfattuale: {cf}");
             foreach (var i in impact) context.AppendLine($"- impatto: {i.Measure} {i.Low:#,0}–{i.High:#,0} {i.Unit} ({i.Basis})");
             foreach (var r in recommendations) context.AppendLine($"- raccomandazione: {r.Action} — {r.ExpectedResult} (approvazione {r.Approval}, rischio: {r.Downside})");
@@ -226,24 +216,11 @@ public sealed class WarehouseOrchestrator(
         if (ws.Source is { } source)
             tools = new CompositeToolbox(tools, new DataAgentToolbox(source, await source.ReadCatalogAsync(ct), savedQueries, 0, clock));
 
-        var system = $"""
-            Sei l'Orchestratore di un sistema agentico di analisi dei magazzini. Coordini agenti specialisti deterministici
-            (inventario, produttività, indagine, impatto, raccomandazioni) e puoi interrogarli con gli strumenti. Puoi anche
-            eseguire query SQL in sola lettura sul gestionale se servono dati che gli agenti non coprono.
-            {Principles}
-            Rispondi in italiano, in testo semplice, con questa struttura:
-            Risposta: (2-3 frasi dirette)
-            Prove: (elenco con numeri presi dagli strumenti o dall'indagine, indicando se sono fatti o segnali)
-            Causa più probabile: (con confidenza alta/media/bassa, oppure "non determinata")
-            Impatto: (intervalli)
-            Cosa fare: (azioni concrete o prossima indagine)
-            Cosa resta aperto:
-            """;
-
-        var result = await ToolLoop.RunAsync(model!, system, [ChatMessage.User(context.ToString())], tools, maxRounds: 8, ct: ct);
+        // Istruzioni e principi in agents/orchestrator/SKILL.md e agents/_shared/principi.md.
+        var result = await agent.RunToolsAsync(agent.System(), [ChatMessage.User(context.ToString())], tools, ct: ct);
         foreach (var step in result.Steps.Where(s => s.Call is not null && s.Call.Name is not "ask_agent"))
             trace.Add(new AgentTraceStep(AgentNames.Orchestrator, $"strumento {step.Call!.Name}", step.Outcome!.Content.Split('\n').LastOrDefault() ?? "", 0));
-        trace.Add(new AgentTraceStep(AgentNames.Orchestrator, "risposta", $"{model!.Info.Provider}/{model.Info.Model}, {result.Steps.Count(s => s.Call is not null)} strumenti usati", 0));
+        trace.Add(new AgentTraceStep(AgentNames.Orchestrator, "risposta", $"{agent.Connector}: {agent.Model.Info.Provider}/{agent.Model.Info.Model}, {result.Steps.Count(s => s.Call is not null)} strumenti usati", 0));
 
         if (!result.Completed)
             return TemplateAnswer(question, intent, findings, seed, investigation, impact, recommendations) + $"\n\n(Modello linguistico non conclusivo: {result.FinalText})";

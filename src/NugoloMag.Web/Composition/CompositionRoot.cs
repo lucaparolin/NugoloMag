@@ -38,6 +38,17 @@ public static class CompositionRoot
         };
     }
 
+    /// <summary>
+    /// Cartella delle skill: Skills:Path (relativo alla content root) oppure la copia accanto all'eseguibile.
+    /// In sviluppo appsettings.Development.json punta alla cartella agents/ del repository: le modifiche valgono subito.
+    /// </summary>
+    private static string SkillsPath(IConfiguration configuration)
+    {
+        if (configuration["Skills:Path"] is not { Length: > 0 } path) return Path.Combine(AppContext.BaseDirectory, "agents");
+        var contentRoot = configuration["contentRoot"] is { Length: > 0 } root ? root : Directory.GetCurrentDirectory();
+        return Path.GetFullPath(path, contentRoot);
+    }
+
     public static void Register(IServiceCollection services, IConfiguration configuration)
     {
         var storeConnection = configuration.GetConnectionString("NugoloStore")
@@ -47,10 +58,17 @@ public static class CompositionRoot
             .ToDictionary(s => s.Key, s => s.Value!, StringComparer.OrdinalIgnoreCase);
         var zone = TimeZoneInfo.FindSystemTimeZoneById(configuration["Monitoring:TimeZone"] ?? "Europe/Rome");
         var poll = TimeSpan.FromSeconds(int.TryParse(configuration["Monitoring:PollSeconds"], out var p) ? p : 60);
-        var llmOptions = LlmOptionsReader.Read(key => configuration[key]);
-        var llmHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(llmOptions.TimeoutSeconds) };
-        var chatModel = ChatModelFactory.Create(llmOptions, llmHttp);
-        var llmEnabled = chatModel is not null;
+
+        // Modelli linguistici: connettori con nome (Llm:Connectors), skill degli agenti su file (agents/), instradamento per agente.
+        var llmSettings = LlmConfiguration.Read(configuration);
+        var connectors = new LlmConnectorRegistry(llmSettings);
+        var skills = new FileSkillLibrary(SkillsPath(configuration));
+        var agentLlm = new AgentLlm(skills, connectors, llmSettings.Agents);
+        var problems = LlmConfiguration.Validate(llmSettings).Concat(skills.Validate([.. SkillIds.All, SkillIds.ConnectorCheck])).Concat(agentLlm.Validate(SkillIds.All)).Distinct().ToList();
+        if (problems.Count > 0)
+            throw new InvalidOperationException("Configurazione LLM o skill non valida:\n- " + string.Join("\n- ", problems));
+        bool Uses(string agent) => agentLlm.IsEnabled(agent);
+        var llmEnabled = SkillIds.All.Any(Uses);
 
         // Infrastruttura
         services.AddSingleton(TimeProvider.System);
@@ -67,19 +85,14 @@ public static class CompositionRoot
         services.AddSingleton<IBriefingStore>(sp => new SqlBriefingStore(sp.GetRequiredService<SqlConnectionFactory>()));
         services.AddSingleton<IInvestigationStore>(sp => new SqlInvestigationStore(sp.GetRequiredService<SqlConnectionFactory>()));
 
-        if (chatModel is not null)
-        {
-            services.AddSingleton(chatModel);
-            services.AddSingleton<IInsightNarrator>(new LlmInsightNarrator(chatModel, new TemplateInsightNarrator()));
-            services.AddSingleton<ISchemaAdvisor>(new LlmSchemaAdvisor(chatModel));
-            services.AddSingleton<IDataAgent>(new LlmDataAgent(chatModel));
-        }
-        else
-        {
-            services.AddSingleton<IInsightNarrator>(new TemplateInsightNarrator());
-            services.AddSingleton<ISchemaAdvisor>(new NoSchemaAdvisor());
-            services.AddSingleton<IDataAgent>(new UnavailableDataAgent());
-        }
+        services.AddSingleton(connectors);
+        services.AddSingleton<ISkillLibrary>(skills);
+        services.AddSingleton(agentLlm);
+        services.AddSingleton(new LlmDiagnostics(skills));
+        services.AddSingleton<IInsightNarrator>(Uses(SkillIds.ReportNarrator)
+            ? new LlmInsightNarrator(agentLlm, new TemplateInsightNarrator()) : new TemplateInsightNarrator());
+        services.AddSingleton<ISchemaAdvisor>(Uses(SkillIds.SchemaAdvisor) ? new LlmSchemaAdvisor(agentLlm) : new NoSchemaAdvisor());
+        services.AddSingleton<IDataAgent>(Uses(SkillIds.DataAssistant) ? new LlmDataAgent(agentLlm) : new UnavailableDataAgent());
 
         // Applicazione
         services.AddSingleton(sp =>
@@ -110,7 +123,7 @@ public static class CompositionRoot
             ISpecialistAgent[] specialists = [new InventoryAgent(new DetectionSettings(), agentic), new ProductivityAgent(agentic)];
             var learning = new LearningAgent(sp.GetRequiredService<IIncidentStore>(), agentic, sp.GetRequiredService<TimeProvider>());
             return new AgentTeam(specialists, new InvestigationAgent(specialists), new ImpactAgent(agentic), new RecommendationAgent(),
-                new BriefingAgent(chatModel), learning);
+                new BriefingAgent(agentLlm), learning);
         });
         services.AddSingleton(sp => sp.GetRequiredService<AgentTeam>().Learning);
         services.AddSingleton(sp => new WarehouseOrchestrator(
@@ -122,7 +135,7 @@ public static class CompositionRoot
             sp.GetRequiredService<IMonitorStore>(),
             sp.GetRequiredService<ISavedQueryStore>(),
             agentic,
-            chatModel,
+            agentLlm,
             sp.GetRequiredService<TimeProvider>(),
             zone));
 
@@ -166,7 +179,9 @@ public static class CompositionRoot
             sp.GetRequiredService<TimeProvider>(), zone));
         services.AddTransient(sp => new InvestigationsController(
             sp.GetRequiredService<IInvestigationStore>(), sp.GetRequiredService<WarehouseOrchestrator>(), sp.GetRequiredService<ISourceRegistry>(),
-            chatModel?.Info));
+            Uses(SkillIds.Orchestrator) ? agentLlm.Resolve(SkillIds.Orchestrator)!.Model.Info : null));
+        services.AddTransient(sp => new ConnectorsController(
+            sp.GetRequiredService<LlmConnectorRegistry>(), sp.GetRequiredService<AgentLlm>(), sp.GetRequiredService<LlmDiagnostics>()));
         services.AddTransient(sp => new QueriesController(
             sp.GetRequiredService<ISavedQueryStore>(), sp.GetRequiredService<ISourceRegistry>(), sp.GetRequiredService<TimeProvider>()));
 
