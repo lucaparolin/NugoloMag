@@ -54,6 +54,8 @@ public class OrchestratorTests(ITestOutputHelper output)
         Assert.Contains("spostamento", mi.ProbableRootCause, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(mi.Hypotheses, h1 => h1.Code == "workload" && h1.Status == HypothesisStatus.Rejected);
         Assert.Contains(mi.Hypotheses, h1 => h1.Code == "operators" && h1.Status != HypothesisStatus.Confirmed);
+        Assert.Contains(mi.Hypotheses, h1 => h1.Code == "order-mix" && h1.Status == HypothesisStatus.Rejected);
+        Assert.Contains(mi.Hypotheses, h1 => h1.Code == "congestion" && h1.Statement.Contains("zona C"));
         Assert.Contains(mi.Impact, x => x.Unit == "€" && x.High > x.Low);
         Assert.Contains(mi.Recommendations, r => r.Approval == ApprovalLevel.SupervisorApproval && r.Scope.Contains("MI-"));
         Assert.True(mi.Severity >= SeverityLevel.High);

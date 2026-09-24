@@ -18,7 +18,8 @@ public sealed record ReportDocument(
     string? Narrative,
     IReadOnlyList<FindingDocument> Findings)
 {
-    public static ReportDocument From(AnalysisReport report, bool includeNarrative = true) => new(
+    /// <param name="compact">Per i prompt degli LLM: senza serie storiche e con al massimo 15 finding (i modelli locali hanno contesti piccoli).</param>
+    public static ReportDocument From(AnalysisReport report, bool includeNarrative = true, bool compact = false) => new(
         AsOf: Iso(report.Window.AsOf),
         BaselineFrom: Iso(report.Window.BaselineStart),
         BaselineTo: Iso(report.Window.BaselineEnd),
@@ -27,7 +28,8 @@ public sealed record ReportDocument(
         Warehouses: report.Warehouses.Select(w => w.Value).ToList(),
         RowsAnalyzed: report.RowsAnalyzed,
         Narrative: includeNarrative ? report.Narrative : null,
-        Findings: report.Findings.Select((f, i) => FindingDocument.From(f, i + 1)).ToList());
+        Findings: report.Findings.Take(compact ? 15 : int.MaxValue)
+            .Select((f, i) => FindingDocument.From(f, i + 1) is var d && compact ? d with { History = [] } : d).ToList());
 
     private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 }

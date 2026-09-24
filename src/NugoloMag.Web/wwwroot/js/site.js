@@ -18,7 +18,7 @@ document.querySelectorAll('form[data-busy]').forEach(function (form) {
 // Domande di esempio: riempiono la casella del messaggio.
 document.querySelectorAll('[data-fill]').forEach(function (chip) {
     chip.addEventListener('click', function () {
-        var box = document.querySelector('.composer textarea');
+        var box = document.querySelector('textarea[name="message"], textarea[name="question"]');
         if (box) { box.value = chip.getAttribute('data-fill'); box.focus(); }
     });
 });

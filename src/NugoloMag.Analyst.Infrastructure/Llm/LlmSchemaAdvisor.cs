@@ -26,7 +26,15 @@ public sealed class LlmSchemaAdvisor(IChatModel model) : ISchemaAdvisor
 
     public async Task<string?> ReviewAsync(DiscoveryReport report, CancellationToken ct = default)
     {
-        var json = NugoloJson.Serialize(report with { Validation = report.Validation is { } v ? v with { Preview = v.Preview.Take(5).ToList() } : null });
+        // Versione compatta: candidati e mapping sì, schema completo delle tabelle e query no (contesti piccoli dei modelli locali).
+        var json = NugoloJson.Serialize(report with
+        {
+            CandidateTables = [],
+            SourceQuery = null,
+            TaskQuery = null,
+            Steps = report.Steps.Select(s => s with { Details = s.Details.Take(6).ToList() }).ToList(),
+            Validation = report.Validation is { } v ? v with { Preview = v.Preview.Take(3).ToList() } : null
+        });
 
         var response = await model.CompleteAsync(new ChatRequest(SystemPrompt, [ChatMessage.User($"<analisi>\n{json}\n</analisi>")], [], MaxTokens: 2000), ct);
         if (response.Stop == ChatStop.Refusal) return null;

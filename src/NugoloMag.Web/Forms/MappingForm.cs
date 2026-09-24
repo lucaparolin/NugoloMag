@@ -39,6 +39,18 @@ public sealed record MappingForm
 
     public string DefaultWarehouse { get; init; } = "MAG";
 
+    public bool UseTasks { get; init; }
+    public string? TaskTable { get; init; }
+    public string? TaskWarehouse { get; init; }
+    public string? TaskStart { get; init; }
+    public string? TaskEnd { get; init; }
+    public string? TaskZone { get; init; }
+    public string? TaskActivity { get; init; }
+    public string? TaskOrder { get; init; }
+    public string? TaskItem { get; init; }
+    public string? TaskLocation { get; init; }
+    public string? TaskQuantity { get; init; }
+
     public static MappingForm FromMapping(SourceMapping? mapping, IReadOnlyList<CodeFrequency> codes)
     {
         if (mapping is null) return new MappingForm { Codes = codes.ToDictionary(c => c.Code, _ => "none") };
@@ -77,7 +89,18 @@ public sealed record MappingForm
             ItemsKey = mapping.Items?.KeyColumn,
             ItemsCategory = mapping.Items?.CategoryColumn,
             ItemsCost = mapping.Items?.CostColumn,
-            DefaultWarehouse = mapping.DefaultWarehouse
+            DefaultWarehouse = mapping.DefaultWarehouse,
+            UseTasks = mapping.Tasks is not null,
+            TaskTable = mapping.Tasks?.Table.ToString(),
+            TaskWarehouse = mapping.Tasks?.WarehouseColumn,
+            TaskStart = mapping.Tasks?.StartColumn,
+            TaskEnd = mapping.Tasks?.EndColumn,
+            TaskZone = mapping.Tasks?.ZoneColumn,
+            TaskActivity = mapping.Tasks?.ActivityColumn,
+            TaskOrder = mapping.Tasks?.OrderColumn,
+            TaskItem = mapping.Tasks?.ItemColumn,
+            TaskLocation = mapping.Tasks?.LocationColumn,
+            TaskQuantity = mapping.Tasks?.QuantityColumn
         };
     }
 
@@ -114,7 +137,18 @@ public sealed record MappingForm
             ItemsKey = f.Text("items.key"),
             ItemsCategory = f.Text("items.category"),
             ItemsCost = f.Text("items.cost"),
-            DefaultWarehouse = f.Text("defaultWarehouse") ?? "MAG"
+            DefaultWarehouse = f.Text("defaultWarehouse") ?? "MAG",
+            UseTasks = f.Flag("tasks.enabled"),
+            TaskTable = f.Text("tasks.table"),
+            TaskWarehouse = f.Text("tasks.warehouse"),
+            TaskStart = f.Text("tasks.start"),
+            TaskEnd = f.Text("tasks.end"),
+            TaskZone = f.Text("tasks.zone"),
+            TaskActivity = f.Text("tasks.activity"),
+            TaskOrder = f.Text("tasks.order"),
+            TaskItem = f.Text("tasks.item"),
+            TaskLocation = f.Text("tasks.location"),
+            TaskQuantity = f.Text("tasks.quantity")
         };
     }
 
@@ -137,6 +171,13 @@ public sealed record MappingForm
             {
                 SnapDate = snap.ColumnFor(ColumnRole.Date), SnapWarehouse = snap.ColumnFor(ColumnRole.Warehouse),
                 SnapItem = snap.ColumnFor(ColumnRole.Item), SnapOnHand = snap.ColumnFor(ColumnRole.OnHand)
+            };
+        if (!SameTable(TaskTable, previous.TaskTable) && Suggest(candidates, TaskTable, TableRole.Tasks) is { } tasks)
+            result = result with
+            {
+                TaskWarehouse = tasks.ColumnFor(ColumnRole.Warehouse), TaskStart = tasks.ColumnFor(ColumnRole.StartTime), TaskEnd = tasks.ColumnFor(ColumnRole.EndTime),
+                TaskZone = tasks.ColumnFor(ColumnRole.Zone), TaskActivity = tasks.ColumnFor(ColumnRole.Activity), TaskOrder = tasks.ColumnFor(ColumnRole.OrderRef),
+                TaskItem = tasks.ColumnFor(ColumnRole.Item), TaskLocation = tasks.ColumnFor(ColumnRole.Location), TaskQuantity = tasks.ColumnFor(ColumnRole.Quantity)
             };
         if (!SameTable(ItemsTable, previous.ItemsTable) && Suggest(candidates, ItemsTable, TableRole.ItemMaster) is { } items)
             result = result with
@@ -177,7 +218,12 @@ public sealed record MappingForm
             ? new ItemMasterSource(TableName.Parse(Req(ItemsTable, "Anagrafica articoli")), Req(ItemsKey, "Codice articolo"), ItemsCategory, ItemsCost)
             : null;
 
-        return new SourceMapping(movements, snapshot, items, DefaultWarehouse);
+        var tasks = UseTasks
+            ? new TaskSource(TableName.Parse(Req(TaskTable, "Tabella missioni")), TaskWarehouse, Req(TaskStart, "Inizio missione"), Req(TaskEnd, "Fine missione"),
+                TaskZone, TaskActivity, TaskOrder, TaskItem, TaskLocation, TaskQuantity)
+            : null;
+
+        return new SourceMapping(movements, snapshot, items, DefaultWarehouse, tasks);
     }
 
     private static bool SameTable(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

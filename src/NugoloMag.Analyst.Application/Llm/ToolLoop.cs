@@ -64,6 +64,11 @@ public static class ToolLoop
                 {
                     outcome = new ToolOutcome($"Argomenti non validi (JSON): {ex.Message}", true);
                 }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Qualunque errore di uno strumento torna al modello come risultato d'errore: può correggersi e continuare.
+                    outcome = new ToolOutcome($"Errore dello strumento {call.Name}: {ex.Message}", true);
+                }
 
                 steps.Add(new LoopStep(null, call, outcome));
                 if (native) messages.Add(ChatMessage.ToolResult(call, outcome.Content, outcome.IsError));

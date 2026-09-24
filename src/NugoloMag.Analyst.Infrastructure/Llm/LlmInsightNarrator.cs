@@ -50,7 +50,7 @@ public sealed class LlmInsightNarrator(IChatModel model, IInsightNarrator fallba
 
     private async Task<string> AskAsync(AnalysisReport report, string instruction, CancellationToken ct)
     {
-        var json = NugoloJson.Serialize(ReportDocument.From(report, includeNarrative: false));
+        var json = NugoloJson.Serialize(ReportDocument.From(report, includeNarrative: false, compact: true));
 
         var response = await model.CompleteAsync(new ChatRequest(SystemPrompt,
             [ChatMessage.User($"<report>\n{json}\n</report>\n\n{instruction}")], [], MaxTokens: 4000), ct);

@@ -51,13 +51,15 @@ public sealed class InvestigationAgent(IReadOnlyList<ISpecialistAgent> specialis
         var activity = seed.Signature.Split(':').Last();
         var q = (string aspect, IReadOnlyList<string> skus) => new AgentQuery(seed.Warehouse, aspect, skus, Activity: activity);
 
+        var analysis = ws.Tasks.IsEmpty ? null : ProductivityAnalysis.Compute(ws.Tasks.For(new(seed.Warehouse), activity), ws.Window, seed.Warehouse, activity);
+        var relocatedSkus = analysis?.Relocations.Select(r => r.Sku).ToList() ?? [];
+        // La congestione si verifica nella zona di destinazione degli spostamenti, se ci sono; altrimenti ovunque.
+        var targetZone = analysis?.Relocations.GroupBy(r => r.ToZone).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+
         var workload = Ask(ws, AgentNames.Productivity, q("workload", []), trace);
         var complexity = Ask(ws, AgentNames.Productivity, q("complexity", []), trace);
         var relocation = Ask(ws, AgentNames.Productivity, q("relocation", []), trace);
-        var congestion = Ask(ws, AgentNames.Productivity, q("congestion", []), trace);
-
-        var relocatedSkus = ws.Tasks.IsEmpty ? [] : ProductivityAnalysis.Compute(ws.Tasks.For(new(seed.Warehouse), activity), ws.Window, seed.Warehouse, activity)?
-            .Relocations.Select(r => r.Sku).ToList() ?? [];
+        var congestion = Ask(ws, AgentNames.Productivity, new AgentQuery(seed.Warehouse, "congestion", [], targetZone, activity), trace);
         var availability = Ask(ws, AgentNames.Inventory, new AgentQuery(seed.Warehouse, "availability", relocatedSkus), trace);
 
         var volumeChange = seed.Measures.GetValueOrDefault("lines_per_day");
@@ -72,7 +74,7 @@ public sealed class InvestigationAgent(IReadOnlyList<ISpecialistAgent> specialis
             contra: relCount == 0 ? ["nessun articolo ha cambiato zona"] : [],
             missing: ["motivo e data dello spostamento nel WMS"], alternatives: 0,
             chain: "spostamento articoli → percorsi più lunghi → meno righe/ora → minore capacità di evasione"));
-        hypotheses.Add(Evaluate("congestion", "Congestione della zona di destinazione",
+        hypotheses.Add(Evaluate("congestion", targetZone is null ? "Congestione in una zona di prelievo" : $"Congestione della zona {targetZone}, destinazione degli spostamenti",
             support: slowdown > 0.1 ? [congestion!.Observation] : [],
             contra: slowdown <= 0.05 && congestion is not null ? ["gli articoli non spostati non rallentano"] : [],
             missing: ["occupazione della zona e numero di operatori contemporanei"], alternatives: 1));
@@ -80,9 +82,11 @@ public sealed class InvestigationAgent(IReadOnlyList<ISpecialistAgent> specialis
             support: workload?.WhyItMatters.Contains("cambiato") == true ? [workload.Observation] : [],
             contra: workload?.WhyItMatters.Contains("nella norma") == true ? [workload.Observation] : [],
             missing: [], alternatives: 1));
+        // Il mix spiega il calo solo se, da solo, riduce la produttività.
+        var mixEffect = analysis?.MixEffect ?? 0;
         hypotheses.Add(Evaluate("order-mix", "Ordini più complessi",
-            support: complexity?.WhyItMatters.Contains("sposta") == true ? [complexity.Observation] : [],
-            contra: complexity?.WhyItMatters.Contains("non cambia") == true ? [complexity.Observation] : [],
+            support: mixEffect <= -0.03 && complexity is not null ? [complexity.Observation] : [],
+            contra: mixEffect > -0.03 && complexity is not null ? [$"effetto del mix sulla produttività {Pct(mixEffect)}: non spiega un calo"] : [],
             missing: [], alternatives: 1));
         hypotheses.Add(Evaluate("availability", "Mancanza di stock sugli articoli prelevati (attese, prelievi a vuoto)",
             support: stockoutDays > 0 ? [availability!.Observation] : [],

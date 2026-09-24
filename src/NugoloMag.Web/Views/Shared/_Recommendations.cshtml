@@ -1,0 +1,20 @@
+@model IReadOnlyList<Recommendation>
+@foreach (var r in Model)
+{
+    var (css, text) = AgenticLabels.Severity(r.Urgency);
+    <div class="card rec">
+        <div class="tags">
+            <span class="badge @css">urgenza @text.ToLowerInvariant()</span>
+            <span class="tag">@AgenticLabels.Approval(r.Approval)</span>
+            <span class="tag">confidenza @AgenticLabels.Confidence(r.Confidence)</span>
+            @if (r.Reversible) { <span class="tag">reversibile</span> }
+        </div>
+        <h3>@r.Action</h3>
+        <dl class="grid-dl">
+            <dt>Ambito</dt><dd>@r.Scope</dd>
+            <dt>Perché</dt><dd>@r.Reason</dd>
+            <dt>Effetto atteso</dt><dd>@r.ExpectedResult</dd>
+            <dt>Controindicazioni</dt><dd>@r.Downside</dd>
+        </dl>
+    </div>
+}

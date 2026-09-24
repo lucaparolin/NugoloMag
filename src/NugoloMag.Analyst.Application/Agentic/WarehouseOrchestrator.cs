@@ -64,14 +64,18 @@ public sealed class WarehouseOrchestrator(
         trace.Add(new AgentTraceStep(AgentNames.Orchestrator, "riconciliazione",
             string.Join(", ", changes.GroupBy(c => c.Transition).Select(g => $"{Transition(g.Key)}: {g.Count()}")), 0));
 
-        var allOpenAfter = changes.Where(c => c.Incident.IsOpen).Select(c => c.Incident).ToList();
+        // 1) indagine, impatto e raccomandazioni per ciò che è nuovo o cambiato
+        var enriched = changes.Select(change =>
+            change.Finding is { } finding && change.Transition is IncidentTransition.NewIssue or IncidentTransition.Worsening or IncidentTransition.ConfidenceIncreased
+                ? change with { Incident = Enrich(change.Incident, finding, findings, ws, trace) }
+                : change).ToList();
+
+        // 2) escalation con il quadro completo (cause comprese), 3) apprendimento, 4) salvataggio
+        var allOpenAfter = enriched.Where(c => c.Incident.IsOpen).Select(c => c.Incident).ToList();
         var saved = new List<IncidentChange>();
-        foreach (var change in changes)
+        foreach (var change in enriched)
         {
             var incident = change.Incident;
-            if (change.Finding is { } finding && change.Transition is IncidentTransition.NewIssue or IncidentTransition.Worsening or IncidentTransition.ConfidenceIncreased)
-                incident = Enrich(incident, finding, findings, ws, trace);
-
             var (level, reason) = IncidentManager.Escalation(incident, allOpenAfter, settings);
             incident = incident with { EscalationLevel = level, EscalationReason = reason };
             incident = await team.Learning.ApplyAsync(incident, change.Transition, ct);

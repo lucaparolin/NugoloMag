@@ -1,0 +1,120 @@
+@model IncidentViewModel
+@{
+    var i = Model.Incident;
+    var (css, text) = AgenticLabels.Severity(i.Severity);
+    var (scss, stext) = AgenticLabels.Status(i.Status);
+    var signal = i.Signals.FirstOrDefault();
+}
+<p class="crumbs"><a href="/Operations">Centro operativo</a> › #@i.Id</p>
+<h1>@i.Title</h1>
+<div class="tags">
+    <span class="badge big @css">@text (@i.SeverityScore.ToString("0.00"))</span>
+    <span class="badge big @scss">@stext</span>
+    <span class="tag">@i.Warehouse</span>
+    <span class="tag">@AgenticLabels.Domain(i.Domain)</span>
+    <span class="tag">confidenza @AgenticLabels.Confidence(i.Confidence)</span>
+    <span class="tag">dal @i.FirstObserved.ToString("dd/MM/yyyy")</span>
+    @if (i.EscalationLevel > 0) { <span class="tag esc">↑ @AgenticLabels.Escalation(i.EscalationLevel)</span> }
+    @if (i.Verification != VerificationStatus.NotApplicable) { <span class="tag">@AgenticLabels.Verification(i.Verification)</span> }
+</div>
+@if (i.EscalationReason is { } er) { <p class="alert warn">Escalation: @er</p> }
+
+@if (i.Narrative is { } narrative) { <div class="card accent prose">@narrative</div> }
+
+<div class="grid-2">
+    <section>
+        <h2>Cosa è stato osservato</h2>
+        @if (signal is not null)
+        {
+            <dl class="grid-dl card">
+                <dt>Osservazione</dt><dd>@signal.Observation</dd>
+                <dt>Perché conta</dt><dd>@signal.WhyItMatters</dd>
+                <dt>Normale atteso</dt><dd>@signal.Baseline</dd>
+                <dt>Scostamento</dt><dd>@signal.Deviation</dd>
+                <dt>Ambito</dt><dd>@i.Scope</dd>
+                <dt>Agenti coinvolti</dt><dd>@string.Join(", ", i.InvolvedAgents.Select(AgentNames.Label))</dd>
+            </dl>
+        }
+        <h2>Prove</h2>
+        <ul class="evidence">
+            @foreach (var e in i.Evidence)
+            {
+                var (ecss, etext) = AgenticLabels.Claim(e.Kind);
+                <li><span class="claim @ecss">@etext</span> @e.Statement <span class="muted small">— @AgentNames.Label(e.Agent)</span></li>
+            }
+        </ul>
+    </section>
+    <section>
+        <h2>Cause</h2>
+        <p>@(i.ProbableRootCause is { } c ? $"Causa più probabile: {c}" : "Nessuna causa sufficientemente supportata.")</p>
+        @if (i.ContributingFactors.Count > 0)
+        {
+            <p class="small">Fattori concomitanti:</p>
+            <ul class="small">@foreach (var f in i.ContributingFactors) { <li>@f</li> }</ul>
+        }
+        @if (i.Timeline.Count > 0)
+        {
+            <h2>Sequenza</h2>
+            <ol class="timeline">@foreach (var t in i.Timeline) { <li>@t</li> }</ol>
+        }
+        @if (i.OpenQuestions.Count > 0)
+        {
+            <h2>Cosa non sappiamo ancora</h2>
+            <ul class="small">@foreach (var q in i.OpenQuestions) { <li>@q</li> }</ul>
+        }
+    </section>
+</div>
+
+<h2>Ipotesi verificate</h2>
+@await Html.PartialAsync("_Hypotheses", i.Hypotheses)
+
+@if (i.Impact.Count > 0)
+{
+    <h2>Impatto stimato</h2>
+    @await Html.PartialAsync("_Impact", i.Impact)
+}
+
+@if (i.Recommendations.Count > 0)
+{
+    <h2>Azioni raccomandate</h2>
+    @await Html.PartialAsync("_Recommendations", i.Recommendations)
+}
+
+<div class="grid-2">
+    <section id="feedback">
+        <h2>Il tuo giudizio</h2>
+        <p class="muted small">Serve all'agente Apprendimento: avvisi giudicati irrilevanti più volte vengono declassati; le azioni eseguite vengono verificate al ciclo successivo.</p>
+        @if (Model.Message is { } msg) { <p class="alert fail">@msg</p> }
+        <form method="post" action="/Operations/Feedback/@i.Id" class="card">
+            @Html.AntiForgeryToken()
+            <div class="choices">
+                @foreach (var (verdict, label) in AgenticLabels.Verdicts)
+                {
+                    <label><input type="radio" name="verdict" value="@AgenticLabels.Code(verdict)"> @label</label>
+                }
+            </div>
+            <label>Nota <input name="note" maxlength="1000" placeholder="es. articoli ricollocati stamattina"></label>
+            <label>Nome <input name="user" maxlength="100"></label>
+            <button type="submit">Invia</button>
+        </form>
+        @if (Model.Feedback.Count > 0)
+        {
+            <ul class="list small">
+                @foreach (var f in Model.Feedback)
+                {
+                    <li>@f.At.ToLocalTime().ToString("dd/MM HH:mm") · <b>@NugoloMag.Analyst.Application.Agentic.LearningAgent.Label(f.Verdict)</b> @(f.Note is { } n ? $"— {n}" : "") <span class="muted">@f.User</span></li>
+                }
+            </ul>
+        }
+    </section>
+    <section>
+        <h2>Storia</h2>
+        <ol class="timeline">
+            @foreach (var e in i.History)
+            {
+                <li><b>@e.At.ToLocalTime().ToString("dd/MM HH:mm")</b> · @AgenticLabels.Transition(e.Transition): <span class="small">@e.Note</span></li>
+            }
+        </ol>
+        @if (i.Outcome is { } outcome) { <p><b>Esito:</b> @outcome</p> }
+    </section>
+</div>

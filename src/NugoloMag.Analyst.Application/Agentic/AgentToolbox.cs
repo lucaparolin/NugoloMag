@@ -35,6 +35,19 @@ public sealed class AgentToolbox(
 
     public Task<ToolOutcome> ExecuteAsync(string name, JsonElement input, CancellationToken ct = default)
     {
+        try
+        {
+            return Execute(name, input);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            // Input del modello non valido: l'errore torna al modello, che può correggersi; il ciclo non si interrompe.
+            return Task.FromResult(new ToolOutcome($"Errore: {ex.Message}", true));
+        }
+    }
+
+    private Task<ToolOutcome> Execute(string name, JsonElement input)
+    {
         string? Str(string p) => input.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
         switch (name)
@@ -48,7 +61,7 @@ public sealed class AgentToolbox(
                 if (!ws.Warehouses.Contains(warehouse, StringComparer.OrdinalIgnoreCase))
                     return Task.FromResult(new ToolOutcome($"Magazzino sconosciuto. Disponibili: {string.Join(", ", ws.Warehouses)}", true));
                 var skus = input.TryGetProperty("skus", out var s) && s.ValueKind == JsonValueKind.Array
-                    ? s.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : [];
+                    ? s.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(x.GetString())).Select(x => x.GetString()!).ToList() : [];
 
                 var answer = agent.Examine(ws, new AgentQuery(warehouse.ToUpperInvariant(), aspect, skus, Str("zone")));
                 trace.Add(new AgentTraceStep(agent.Name, $"esame '{aspect}' su {warehouse} (richiesto dall'LLM)", answer?.Observation ?? "nessun dato", 0));

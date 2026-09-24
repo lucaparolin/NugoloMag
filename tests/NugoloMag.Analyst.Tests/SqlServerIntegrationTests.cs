@@ -118,3 +118,46 @@ public class AssistantToolsIntegrationTests
         Assert.Equal(before, after);
     }
 }
+
+public class AgenticStoresIntegrationTests
+{
+    private static string Db(string name) =>
+        new SqlConnectionStringBuilder(SqlServerFactAttribute.Connection) { InitialCatalog = name }.ConnectionString;
+
+    [SqlServerFact]
+    public async Task Incidents_briefings_and_feedback_round_trip_through_sql_server()
+    {
+        var connections = new SqlConnectionFactory(Db("NugoloTestStoreAgentic"));
+        await new StoreSchemaInstaller(connections).InstallAsync();
+        var incidents = new SqlIncidentStore(connections);
+        var briefings = new SqlBriefingStore(connections);
+
+        var finding = new NugoloMag.Analyst.Domain.Agentic.AgentFinding
+        {
+            Agent = "productivity", Domain = NugoloMag.Analyst.Domain.Agentic.OperationalDomain.Productivity,
+            Signature = $"productivity:below-expectation:T{Guid.NewGuid():N}"[..60], Warehouse = "MI01", Title = "Produttività -33%",
+            Observation = "oss", WhyItMatters = "perché", Baseline = "b", Deviation = "d", Scope = "s",
+            Evidence = [new(NugoloMag.Analyst.Domain.Agentic.ClaimKind.Fact, "19 articoli spostati", "productivity", new Dictionary<string, string> { ["zona"] = "C" })],
+            Confidence = NugoloMag.Analyst.Domain.Agentic.ConfidenceLevel.High,
+            Severity = new(1, 0.6, 0.4, 0.7, NugoloMag.Analyst.Domain.Agentic.ConfidenceLevel.High), Intensity = 0.33,
+            Measures = new Dictionary<string, double> { ["efficiency_gap"] = -0.33 }
+        };
+        var change = NugoloMag.Analyst.Application.Agentic.IncidentManager.Reconcile("erp", [], [finding], ["MI01"], DateTimeOffset.UtcNow).Single();
+        var id = await incidents.SaveAsync(change.Incident with { ProbableRootCause = "spostamento articoli" });
+
+        var loaded = (await incidents.ListOpenAsync("erp")).Single(i => i.Id == id);
+        Assert.Equal("spostamento articoli", loaded.ProbableRootCause);
+        Assert.Equal(-0.33, loaded.Signals[0].Measures["efficiency_gap"]);
+        Assert.Equal("C", loaded.Evidence[0].Data["zona"]);
+
+        await incidents.AddFeedbackAsync(new(id, DateTimeOffset.UtcNow, NugoloMag.Analyst.Domain.Agentic.FeedbackVerdict.Irrelevant, "promo", "test"));
+        Assert.Equal(1, await incidents.DismissalsAsync("erp", finding.Signature));
+
+        var briefingId = await briefings.SaveAsync(new NugoloMag.Analyst.Domain.Agentic.ExecutiveBriefing
+        {
+            SourceName = "erp", AsOf = new DateOnly(2026, 9, 23), CreatedAt = DateTimeOffset.UtcNow,
+            ExecutiveSummary = ["Nuovo · MI01: produttività -33%"], CriticalRisks = [], PositiveSignals = [], RootCauses = [], RecommendedActions = [], WatchList = []
+        });
+        Assert.Equal("Nuovo · MI01: produttività -33%", (await briefings.GetAsync(briefingId))!.ExecutiveSummary[0]);
+    }
+}

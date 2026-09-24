@@ -1,0 +1,23 @@
+@model IReadOnlyList<Hypothesis>
+@if (Model.Count > 0)
+{
+    <div class="table-wrap">
+        <table class="hyp">
+            <thead><tr><th>Ipotesi</th><th>Stato</th><th>Confidenza</th><th>A favore</th><th>Contro</th><th>Mancano</th></tr></thead>
+            <tbody>
+            @foreach (var h in Model.OrderBy(h => h.Status == HypothesisStatus.Rejected).ThenByDescending(h => h.Status == HypothesisStatus.Confirmed))
+            {
+                var (css, text) = AgenticLabels.Hypothesis(h.Status);
+                <tr class="@(h.Status == HypothesisStatus.Rejected ? "dim" : "")">
+                    <td>@h.Statement @if (h.CausalChain is { } chain) { <div class="muted small">catena: @chain</div> }</td>
+                    <td><span class="badge @css">@text</span></td>
+                    <td>@AgenticLabels.Confidence(h.Confidence)</td>
+                    <td class="small">@foreach (var s in h.Supporting) { <div>+ @s</div> }</td>
+                    <td class="small">@foreach (var s in h.Contradicting) { <div>− @s</div> }</td>
+                    <td class="small muted">@foreach (var s in h.Missing) { <div>? @s</div> }</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

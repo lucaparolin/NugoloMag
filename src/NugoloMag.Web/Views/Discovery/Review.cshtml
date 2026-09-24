@@ -6,6 +6,7 @@
     var movColumns = Model.ColumnsOf(f.MovTable);
     var snapColumns = Model.ColumnsOf(f.SnapTable);
     var itemColumns = Model.ColumnsOf(f.ItemsTable);
+    var taskColumns = Model.ColumnsOf(f.TaskTable);
     var codeIndex = 0;
 }
 
@@ -123,6 +124,25 @@
                 <label>Categoria @FormControls.ColumnSelect("items.category", itemColumns, f.ItemsCategory, true)</label>
                 <label>Costo @FormControls.ColumnSelect("items.cost", itemColumns, f.ItemsCost, true)</label>
             </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><label class="check"><input type="checkbox" name="tasks.enabled" checked="@f.UseTasks"> Missioni di magazzino (abilita l'agente Produttività)</label></legend>
+            <label>Tabella @FormControls.TableSelect("tasks.table", Model.TablesFor(TableRole.Tasks, f.TaskTable), f.TaskTable)</label>
+            <div class="row">
+                <label>Inizio @FormControls.ColumnSelect("tasks.start", taskColumns, f.TaskStart, true)</label>
+                <label>Fine @FormControls.ColumnSelect("tasks.end", taskColumns, f.TaskEnd, true)</label>
+                <label>Zona @FormControls.ColumnSelect("tasks.zone", taskColumns, f.TaskZone, true)</label>
+                <label>Attività @FormControls.ColumnSelect("tasks.activity", taskColumns, f.TaskActivity, true)</label>
+            </div>
+            <div class="row">
+                <label>Magazzino @FormControls.ColumnSelect("tasks.warehouse", taskColumns, f.TaskWarehouse, true)</label>
+                <label>Ordine @FormControls.ColumnSelect("tasks.order", taskColumns, f.TaskOrder, true)</label>
+                <label>Articolo @FormControls.ColumnSelect("tasks.item", taskColumns, f.TaskItem, true)</label>
+                <label>Ubicazione @FormControls.ColumnSelect("tasks.location", taskColumns, f.TaskLocation, true)</label>
+                <label>Quantità @FormControls.ColumnSelect("tasks.quantity", taskColumns, f.TaskQuantity, true)</label>
+            </div>
+            <p class="muted small">L'operatore non viene letto: la produttività si spiega con le condizioni operative, non con le persone.</p>
         </fieldset>
 
         <button type="submit">Riprova con queste impostazioni</button>

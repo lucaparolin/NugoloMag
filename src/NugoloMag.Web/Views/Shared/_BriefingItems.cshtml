@@ -1,0 +1,19 @@
+@model BriefingSection
+@if (Model.Items.Count == 0)
+{
+    <p class="muted small">@Model.Empty</p>
+}
+else
+{
+    <ul class="briefing-list">
+        @foreach (var item in Model.Items)
+        {
+            var (css, text) = AgenticLabels.Severity(item.Severity);
+            <li>
+                <span class="badge @css">@text</span> <span class="tag">@AgenticLabels.Trend(item.Trend)</span>
+                @if (item.IncidentId is { } id) { <a href="/Operations/Incident/@id"><b>@item.Title</b></a> } else { <b>@item.Title</b> }
+                <div class="small muted">@item.Warehouse · @item.Detail</div>
+            </li>
+        }
+    </ul>
+}

@@ -89,3 +89,22 @@ textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px;
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { background: var(--bg); color: var(--ink); border: 1px solid var(--line); font-weight: 400; font-size: 13px; text-align: left; }
 .table-wrap.result { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-height: 360px; overflow: auto; } .table-wrap.result p { margin: 6px 0 0; }
+.badge.crit { background: var(--fail); color: #fff; }
+.text-crit, .text-fail { color: var(--fail); } .text-warn { color: var(--warn); } .text-muted { color: var(--muted); }
+.alert.warn { background: var(--warn-bg); color: var(--warn); }
+.incidents { display: grid; gap: 10px; }
+a.card.incident { display: block; color: var(--ink); text-decoration: none; border-left: 4px solid var(--line); }
+a.card.incident:hover { border-color: var(--accent); }
+.incident.sev-crit, .incident.sev-fail { border-left-color: var(--fail); } .incident.sev-warn { border-left-color: var(--warn); }
+.tag.esc { border-color: var(--fail); color: var(--fail); }
+.grid-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 6px 0 0; font-size: 14px; }
+.grid-dl dt { color: var(--muted); } .grid-dl dd { margin: 0; overflow-wrap: anywhere; }
+.evidence { list-style: none; padding: 0; } .evidence li { padding: 4px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+.claim { display: inline-block; min-width: 64px; text-align: center; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 1px 6px; margin-right: 4px; text-transform: uppercase; letter-spacing: .02em; }
+.claim.fact { background: var(--ok-bg); color: var(--ok); } .claim.signal { background: var(--warn-bg); color: var(--warn); }
+.claim.hyp { background: var(--line); color: var(--muted); }
+table.hyp td { font-size: 13px; } tr.dim td { opacity: .55; }
+.timeline { padding-left: 18px; font-size: 14px; } .timeline li { margin: 3px 0; }
+.card.rec h3 { margin: 4px 0 6px; }
+.briefing-list { list-style: none; padding: 0; } .briefing-list li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.kpi span + span { display: block; }

@@ -164,7 +164,8 @@ public sealed class InventoryAgent(DetectionSettings detection, AgenticSettings 
             FindingKind.Stockout => Math.Max(0.5, Math.Min(1, relative)),
             FindingKind.Integrity => 0.5, // dati di giacenza inaffidabili: rischio sulle decisioni di riordino, non una perdita misurata
             FindingKind.Spike or FindingKind.Drop when f.Metric == Metric.Outbound => 0.3,
-            _ when f.Metric == Metric.Adjustment => Math.Min(1, relative * 3),
+            // Solo le rettifiche negative sono perdite (ammanchi): pesano di più di un semplice flusso.
+            _ when f.Metric == Metric.Adjustment => Math.Min(1, relative * ((f.Observed ?? 0) < (f.Baseline ?? 0) ? 3 : 1)),
             _ => Math.Min(1, relative)
         };
         // Ambito: un finding di magazzino spiegato da pochi articoli ha un ambito ristretto.

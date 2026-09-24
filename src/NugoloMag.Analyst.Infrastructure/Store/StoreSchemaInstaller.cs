@@ -97,6 +97,52 @@ public sealed class StoreSchemaInstaller(SqlConnectionFactory connections)
             CreatedBy      varchar(20)       NOT NULL,
             ConversationId bigint            NULL,
             CreatedAt      datetimeoffset(0) NOT NULL);
+
+        IF OBJECT_ID(N'nugolo.Incident', N'U') IS NULL
+        CREATE TABLE nugolo.Incident (
+            IncidentId      bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_Incident PRIMARY KEY,
+            SourceName      nvarchar(100)     NOT NULL,
+            Warehouse       nvarchar(20)      NOT NULL,
+            Domain          varchar(30)       NOT NULL,
+            Signature       nvarchar(300)     NOT NULL,
+            Title           nvarchar(500)     NOT NULL,
+            Status          varchar(20)       NOT NULL,
+            Severity        varchar(20)       NOT NULL,
+            SeverityScore   float             NOT NULL,
+            Confidence      varchar(10)       NOT NULL,
+            EscalationLevel int               NOT NULL,
+            Verification    varchar(20)       NOT NULL,
+            DetectedAt      datetimeoffset(0) NOT NULL,
+            UpdatedAt       datetimeoffset(0) NOT NULL,
+            CaseJson        nvarchar(max)     NOT NULL);
+
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Incident_Source_Status' AND object_id = OBJECT_ID(N'nugolo.Incident'))
+        CREATE INDEX IX_Incident_Source_Status ON nugolo.Incident (SourceName, Status) INCLUDE (Signature, SeverityScore);
+
+        IF OBJECT_ID(N'nugolo.IncidentFeedback', N'U') IS NULL
+        CREATE TABLE nugolo.IncidentFeedback (
+            FeedbackId bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_IncidentFeedback PRIMARY KEY,
+            IncidentId bigint            NOT NULL CONSTRAINT FK_Feedback_Incident REFERENCES nugolo.Incident(IncidentId),
+            At         datetimeoffset(0) NOT NULL,
+            Verdict    varchar(20)       NOT NULL,
+            Note       nvarchar(1000)    NULL,
+            UserName   nvarchar(100)     NULL);
+
+        IF OBJECT_ID(N'nugolo.Briefing', N'U') IS NULL
+        CREATE TABLE nugolo.Briefing (
+            BriefingId   bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_Briefing PRIMARY KEY,
+            SourceName   nvarchar(100)     NOT NULL,
+            AsOf         date              NOT NULL,
+            CreatedAt    datetimeoffset(0) NOT NULL,
+            BriefingJson nvarchar(max)     NOT NULL);
+
+        IF OBJECT_ID(N'nugolo.Investigation', N'U') IS NULL
+        CREATE TABLE nugolo.Investigation (
+            InvestigationId bigint IDENTITY(1,1) NOT NULL CONSTRAINT PK_Investigation PRIMARY KEY,
+            SourceName      nvarchar(100)     NOT NULL,
+            Question        nvarchar(2000)    NOT NULL,
+            CreatedAt       datetimeoffset(0) NOT NULL,
+            CaseJson        nvarchar(max)     NOT NULL);
         """;
 
     public async Task InstallAsync(CancellationToken ct = default)

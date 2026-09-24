@@ -1,0 +1,66 @@
+@model BriefingViewModel
+@{
+    var b = Model.Briefing;
+}
+<h1>Briefing direzionale</h1>
+<p class="lead">Non un riassunto del cruscotto: cosa è cambiato, cosa rischiamo, perché, cosa fare.</p>
+
+@if (Model.Monitors.Count > 0)
+{
+    <form method="post" action="/Briefing/Run" class="inline card" data-busy="Gli agenti stanno osservando…">
+        @Html.AntiForgeryToken()
+        <label>Monitoraggio
+            <select name="monitor">@foreach (var m in Model.Monitors) { <option value="@m.Id">@m.Name (@m.SourceName)</option> }</select>
+        </label>
+        <button type="submit">Esegui ora un ciclo di osservazione</button>
+    </form>
+}
+
+@if (b is null)
+{
+    <p class="muted">Nessun briefing ancora: si genera a ogni esecuzione del monitoraggio.</p>
+}
+else
+{
+    <p class="muted small">Briefing #@b.Id · sorgente @b.SourceName · giornata analizzata @b.AsOf.ToString("dd/MM/yyyy") · generato @b.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
+    @if (b.Narrative is { } narrative) { <div class="card accent prose">@narrative</div> }
+
+    <h2>1. Sintesi</h2>
+    <ul>@foreach (var s in b.ExecutiveSummary) { <li>@s</li> }</ul>
+
+    <div class="grid-2">
+        <section><h2>2. Rischi critici</h2>@await Html.PartialAsync("_BriefingItems", new BriefingSection(b.CriticalRisks, "Nessun rischio critico."))</section>
+        <section><h2>3. Segnali positivi</h2>@await Html.PartialAsync("_BriefingItems", new BriefingSection(b.PositiveSignals, "Nessun segnale positivo da evidenziare."))</section>
+        <section><h2>4. Cause</h2>@await Html.PartialAsync("_BriefingItems", new BriefingSection(b.RootCauses, "Nessuna causa confermata o probabile."))</section>
+        <section><h2>5. Azioni raccomandate</h2>@await Html.PartialAsync("_BriefingItems", new BriefingSection(b.RecommendedActions, "Nessuna azione necessaria."))</section>
+    </div>
+    <h2>6. Da tenere sotto osservazione</h2>
+    @await Html.PartialAsync("_BriefingItems", new BriefingSection(b.WatchList, "Niente da segnalare."))
+
+    @if (b.CrossWarehouse.Count > 0)
+    {
+        <h2>Tra magazzini</h2>
+        <ul>@foreach (var c in b.CrossWarehouse) { <li>@c</li> }</ul>
+    }
+
+    @if (b.CycleTrace.Count > 0)
+    {
+        <details>
+            <summary>Come ci sono arrivati gli agenti (@b.CycleTrace.Count passi)</summary>
+            <ol class="trace">
+                @foreach (var t in b.CycleTrace)
+                {
+                    <li class="ok"><div class="trace-head"><span class="dot">·</span> <b>@AgentNames.Label(t.Agent)</b> — @t.Action</div><ul><li>@t.Detail</li></ul></li>
+                }
+            </ol>
+        </details>
+    }
+}
+
+@if (Model.History.Count > 1)
+{
+    <h2>Briefing precedenti</h2>
+    <ul class="list small">
+        @foreach (var h in Model.History) { <li><a href="/Briefing/Details/@h.Id">#@h.Id @h.SourceName — @h.AsOf.ToString("dd/MM/yyyy")</a> <span class="muted">@h.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span></li> }
+    </ul>
+}

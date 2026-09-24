@@ -1,0 +1,55 @@
+@model InvestigationCase
+<p class="crumbs"><a href="/Investigations">Indagini</a> › #@Model.Id</p>
+<h1>@Model.Question</h1>
+<div class="tags">
+    <span class="tag">@AgenticLabels.Domain(Model.Domain)</span>
+    <span class="tag">confidenza @AgenticLabels.Confidence(Model.Confidence)</span>
+    <span class="tag">@Model.SourceName</span>
+    <span class="tag">@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+</div>
+
+<div class="card accent prose">@Model.Answer</div>
+
+<div class="grid-2">
+    <section>
+        <h2>Piano dell'orchestratore</h2>
+        <ol>@foreach (var p in Model.Plan) { <li>@p</li> }</ol>
+        <p class="small">Agenti attivati: @string.Join(", ", Model.InvolvedAgents.Select(AgentNames.Label))</p>
+    </section>
+    <section>
+        <h2>Tracciato dell'indagine</h2>
+        <ol class="trace">
+            @foreach (var t in Model.Trace)
+            {
+                <li class="ok"><div class="trace-head"><span class="dot">·</span> <b>@AgentNames.Label(t.Agent)</b> — @t.Action</div><ul><li>@t.Detail</li></ul></li>
+            }
+        </ol>
+    </section>
+</div>
+
+@if (Model.Hypotheses.Count > 0)
+{
+    <h2>Ipotesi</h2>
+    @await Html.PartialAsync("_Hypotheses", Model.Hypotheses)
+}
+@if (Model.Impact.Count > 0)
+{
+    <h2>Impatto</h2>
+    @await Html.PartialAsync("_Impact", Model.Impact)
+}
+@if (Model.Recommendations.Count > 0)
+{
+    <h2>Azioni</h2>
+    @await Html.PartialAsync("_Recommendations", Model.Recommendations)
+}
+@if (Model.Findings.Count > 0)
+{
+    <h2>Segnali considerati</h2>
+    <ul class="small">
+        @foreach (var f in Model.Findings)
+        {
+            var (css, text) = AgenticLabels.Severity(f.Urgency);
+            <li><span class="badge @css">@text</span> @f.Title <span class="muted">— @AgentNames.Label(f.Agent)</span></li>
+        }
+    </ul>
+}

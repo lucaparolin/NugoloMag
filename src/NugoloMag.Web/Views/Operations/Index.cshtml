@@ -1,0 +1,55 @@
+@model OperationsViewModel
+
+<h1>Centro operativo</h1>
+<p class="lead">Quello che gli agenti hanno trovato senza che nessuno lo chiedesse, ordinato per importanza (severità = magnitudo × ampiezza × impatto × urgenza × confidenza).</p>
+
+@if (Model.Open.Count == 0)
+{
+    <div class="card"><p class="flush">Nessun problema aperto. Il sistema osserva a ogni esecuzione del monitoraggio; puoi avviare un ciclo dalla pagina <a href="/Briefing">Briefing</a>.</p></div>
+}
+else
+{
+    <div class="kpis">
+        @foreach (var level in new[] { SeverityLevel.Critical, SeverityLevel.High, SeverityLevel.Medium, SeverityLevel.Low })
+        {
+            var (css, text) = AgenticLabels.Severity(level);
+            <div class="kpi"><b class="text-@css">@Model.Open.Count(i => i.Severity == level)</b><span>@text</span></div>
+        }
+        <div class="kpi"><b>@Model.Open.Count(i => i.EscalationLevel > 0)</b><span>in escalation</span></div>
+    </div>
+
+    <div class="incidents">
+        @foreach (var i in Model.Open)
+        {
+            var (css, text) = AgenticLabels.Severity(i.Severity);
+            var (scss, stext) = AgenticLabels.Status(i.Status);
+            <a class="card incident sev-@css" href="/Operations/Incident/@i.Id">
+                <div class="tags">
+                    <span class="badge @css">@text</span>
+                    <span class="badge @scss">@stext</span>
+                    <span class="tag">@i.Warehouse</span>
+                    <span class="tag">@AgenticLabels.Domain(i.Domain)</span>
+                    @if (i.EscalationLevel > 0) { <span class="tag esc">↑ @AgenticLabels.Escalation(i.EscalationLevel)</span> }
+                </div>
+                <h3>@i.Title</h3>
+                <p class="small flush">
+                    @if (i.ProbableRootCause is { } cause) { <span>Causa probabile: <b>@cause</b> (confidenza @AgenticLabels.Confidence(i.Confidence))</span> }
+                    else { <span class="muted">Causa non ancora determinata</span> }
+                </p>
+                @if (i.Recommendations.FirstOrDefault() is { } rec) { <p class="small muted flush">→ @rec.Action</p> }
+            </a>
+        }
+    </div>
+}
+
+@if (Model.Resolved.Count > 0)
+{
+    <h2>Risolti di recente</h2>
+    <ul class="list">
+        @foreach (var i in Model.Resolved)
+        {
+            <li><a href="/Operations/Incident/@i.Id">@i.Title</a> <span class="muted small">@i.Warehouse · @i.UpdatedAt.ToLocalTime().ToString("dd/MM HH:mm") · @(i.Outcome ?? "")</span>
+                @if (i.Verification != VerificationStatus.NotApplicable) { <span class="badge @(i.Verification == VerificationStatus.Effective ? "ok" : "warn")">@AgenticLabels.Verification(i.Verification)</span> }</li>
+        }
+    </ul>
+}

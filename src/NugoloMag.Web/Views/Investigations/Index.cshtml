@@ -1,0 +1,39 @@
+@model InvestigationsViewModel
+@{
+    string[] examples =
+    [
+        "Perché la produttività di MI01 è calata questa settimana?",
+        "Di cosa mi devo preoccupare oggi?",
+        "Quali articoli rischiano di andare in rottura?",
+        "Perché il picking di RM02 è più lento?",
+        "Ci sono rettifiche inventariali anomale?"
+    ];
+}
+<h1>Indagini</h1>
+<p class="lead">Fai una domanda operativa: l'orchestratore la scompone in sotto-domande, attiva gli agenti giusti e costruisce un caso con prove, cause, impatto e azioni.</p>
+<p class="muted small">
+    @(Model.Model is { } m ? $"Modello linguistico: {m.Provider} / {m.Model}{(m.SupportsTools ? "" : " (strumenti emulati via JSON)")}." : "Nessun modello linguistico configurato: risposta costruita solo dagli agenti deterministici.")
+</p>
+
+@if (Model.Error is { } error) { <p class="alert fail">@error</p> }
+<form method="post" action="/Investigations/Ask" class="card" data-busy="Gli agenti stanno indagando… (con un modello locale può richiedere qualche minuto)">
+    @Html.AntiForgeryToken()
+    <div class="row">
+        <label>Sorgente <select name="source">@foreach (var s in Model.Sources) { <option value="@s">@s</option> }</select></label>
+    </div>
+    <label>Domanda <textarea name="question" rows="3" maxlength="1000" required>@Model.Draft</textarea></label>
+    <div class="chips">@foreach (var e in examples) { <button type="button" class="chip" data-fill="@e">@e</button> }</div>
+    <p></p>
+    <button type="submit">Indaga</button>
+</form>
+
+@if (Model.Items.Count > 0)
+{
+    <h2>Indagini precedenti</h2>
+    <ul class="list">
+        @foreach (var c in Model.Items)
+        {
+            <li><a href="/Investigations/Details/@c.Id">@c.Question</a> <span class="muted small">@c.SourceName · @c.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm") · @AgenticLabels.Domain(c.Domain)</span></li>
+        }
+    </ul>
+}

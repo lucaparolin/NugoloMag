@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NugoloMag.Analyst.Application;
 using NugoloMag.Analyst.Application.Abstractions;
+using NugoloMag.Analyst.Application.Agentic;
 using NugoloMag.Analyst.Application.Assistant;
 using NugoloMag.Analyst.Application.Detection;
 using NugoloMag.Analyst.Application.Discovery;
@@ -21,6 +22,22 @@ namespace NugoloMag.Web.Composition;
 /// </summary>
 public static class CompositionRoot
 {
+    /// <summary>Parametri economici degli agenti (sezione "Agentic"), letti in modo esplicito.</summary>
+    private static AgenticSettings ReadAgenticSettings(IConfiguration configuration)
+    {
+        var defaults = new AgenticSettings();
+        double D(string key, double fallback) =>
+            double.TryParse(configuration[$"Agentic:{key}"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+        return defaults with
+        {
+            LaborCostPerHour = D("LaborCostPerHour", defaults.LaborCostPerHour),
+            MaterialAmount = D("MaterialAmount", defaults.MaterialAmount),
+            StockoutCoverDays = D("StockoutCoverDays", defaults.StockoutCoverDays),
+            OverstockCoverDays = D("OverstockCoverDays", defaults.OverstockCoverDays),
+            ImpactHorizonDays = (int)D("ImpactHorizonDays", defaults.ImpactHorizonDays)
+        };
+    }
+
     public static void Register(IServiceCollection services, IConfiguration configuration)
     {
         var storeConnection = configuration.GetConnectionString("NugoloStore")
@@ -46,6 +63,9 @@ public static class CompositionRoot
         services.AddSingleton<IRunReportQuery>(sp => sp.GetRequiredService<SqlMonitorStore>());
         services.AddSingleton<IConversationStore>(sp => new SqlConversationStore(sp.GetRequiredService<SqlConnectionFactory>()));
         services.AddSingleton<ISavedQueryStore>(sp => new SqlSavedQueryStore(sp.GetRequiredService<SqlConnectionFactory>()));
+        services.AddSingleton<IIncidentStore>(sp => new SqlIncidentStore(sp.GetRequiredService<SqlConnectionFactory>()));
+        services.AddSingleton<IBriefingStore>(sp => new SqlBriefingStore(sp.GetRequiredService<SqlConnectionFactory>()));
+        services.AddSingleton<IInvestigationStore>(sp => new SqlInvestigationStore(sp.GetRequiredService<SqlConnectionFactory>()));
 
         if (chatModel is not null)
         {
@@ -82,13 +102,38 @@ public static class CompositionRoot
         });
         services.AddSingleton(sp => new DatabaseDiscoveryAgent(
             new SourceValidator(), sp.GetRequiredService<ISchemaAdvisor>(), sp.GetRequiredService<TimeProvider>()));
+        // Sistema agentico (blueprint MVP): specialisti, indagine, impatto, raccomandazioni, briefing, apprendimento, orchestratore.
+        var agentic = ReadAgenticSettings(configuration);
+        services.AddSingleton(agentic);
+        services.AddSingleton(sp =>
+        {
+            ISpecialistAgent[] specialists = [new InventoryAgent(new DetectionSettings(), agentic), new ProductivityAgent(agentic)];
+            var learning = new LearningAgent(sp.GetRequiredService<IIncidentStore>(), agentic, sp.GetRequiredService<TimeProvider>());
+            return new AgentTeam(specialists, new InvestigationAgent(specialists), new ImpactAgent(agentic), new RecommendationAgent(),
+                new BriefingAgent(chatModel), learning);
+        });
+        services.AddSingleton(sp => sp.GetRequiredService<AgentTeam>().Learning);
+        services.AddSingleton(sp => new WarehouseOrchestrator(
+            sp.GetRequiredService<AgentTeam>(),
+            sp.GetRequiredService<IIncidentStore>(),
+            sp.GetRequiredService<IBriefingStore>(),
+            sp.GetRequiredService<IInvestigationStore>(),
+            sp.GetRequiredService<ISourceRegistry>(),
+            sp.GetRequiredService<IMonitorStore>(),
+            sp.GetRequiredService<ISavedQueryStore>(),
+            agentic,
+            chatModel,
+            sp.GetRequiredService<TimeProvider>(),
+            zone));
+
         services.AddSingleton(sp => new MonitoringService(
             sp.GetRequiredService<IDiscoveryStore>(),
             sp.GetRequiredService<IMonitorStore>(),
             sp.GetRequiredService<ISourceRegistry>(),
             sp.GetRequiredService<AnalystService>(),
             sp.GetRequiredService<TimeProvider>(),
-            zone));
+            zone,
+            sp.GetRequiredService<WarehouseOrchestrator>()));
         services.AddSingleton(sp => new ConversationService(
             sp.GetRequiredService<IConversationStore>(),
             sp.GetRequiredService<ISavedQueryStore>(),
@@ -114,6 +159,14 @@ public static class CompositionRoot
 
         services.AddTransient(sp => new AssistantController(
             sp.GetRequiredService<ConversationService>(), sp.GetRequiredService<IConversationStore>(), sp.GetRequiredService<ISourceRegistry>()));
+        services.AddTransient(sp => new OperationsController(
+            sp.GetRequiredService<IIncidentStore>(), sp.GetRequiredService<LearningAgent>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddTransient(sp => new BriefingController(
+            sp.GetRequiredService<IBriefingStore>(), sp.GetRequiredService<IMonitorStore>(), sp.GetRequiredService<WarehouseOrchestrator>(),
+            sp.GetRequiredService<TimeProvider>(), zone));
+        services.AddTransient(sp => new InvestigationsController(
+            sp.GetRequiredService<IInvestigationStore>(), sp.GetRequiredService<WarehouseOrchestrator>(), sp.GetRequiredService<ISourceRegistry>(),
+            chatModel?.Info));
         services.AddTransient(sp => new QueriesController(
             sp.GetRequiredService<ISavedQueryStore>(), sp.GetRequiredService<ISourceRegistry>(), sp.GetRequiredService<TimeProvider>()));
 

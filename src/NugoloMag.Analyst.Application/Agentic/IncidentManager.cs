@@ -93,8 +93,11 @@ public static class IncidentManager
     /// <summary>Regole di escalation (blueprint §4).</summary>
     public static (int Level, string? Reason) Escalation(Incident incident, IReadOnlyList<Incident> allOpen, AgenticSettings settings)
     {
+        // Sistemico = stesso tipo di problema in più magazzini senza cause locali diverse
+        // (due picchi spiegati da categorie diverse sono due eventi locali, non un problema comune).
         var pattern = string.Join(':', incident.Signature.Split(':').Take(2));
-        var systemic = allOpen.Where(i => string.Join(':', i.Signature.Split(':').Take(2)) == pattern).Select(i => i.Warehouse).Distinct().Count() >= 2;
+        var peers = allOpen.Where(i => string.Join(':', i.Signature.Split(':').Take(2)) == pattern && i.Warehouse != incident.Warehouse).ToList();
+        var systemic = peers.Any(p => p.ProbableRootCause is null || incident.ProbableRootCause is null || p.ProbableRootCause == incident.ProbableRootCause);
 
         if (incident.Severity >= settings.EscalateToManagementFrom) return (2, "Severità critica: esposizione operativa o economica rilevante.");
         if (systemic && incident.Severity >= SeverityLevel.Medium) return (2, "Lo stesso problema è presente in più magazzini: possibile causa sistemica.");
